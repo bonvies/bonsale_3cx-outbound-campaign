@@ -1,0 +1,141 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: bonsale_3cx-outbound-campaign_backend
+    ports:
+      - "4020:4020"
+    env_file:
+      - .env
+    depends_on:
+      telesale-api:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      - bonsale-network
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "256m"
+        max-file: "10"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+    container_name: bonsale_3cx-outbound-campaign_frontend
+    ports:
+      - "4030:80"
+    depends_on:
+      - backend
+    networks:
+      - bonsale-network
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: bonsale_3cx-outbound-campaign_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - bonsale-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis GUI 管理工具
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    pull_policy: always
+    container_name: bonsale_redis_commander
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - bonsale-network
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Bonsale API (Telesale)
+  telesale-api:
+    image: gcr.io/drvet-server-sysstore-bonvies/telesale-api:1f40649daf3cd2abe059b899863a59497e297db7
+    pull_policy: always
+    container_name: telesale_api
+    ports:
+      - "8089:8089"
+    mem_limit: 8GB
+    env_file:
+      - telesale-api.env
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - bonsale-network
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "256m"
+        max-file: "10"
+
+  mysql:
+    image: mysql:8.0
+    container_name: bonsale_3cx-outbound-campaign_mysql
+    ports:
+      - "3307:3306"
+    env_file:
+      - mysql.env
+    environment:
+      MYSQL_INITDB_SKIP_TZINFO: "yes"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./bonsale_21finance_bonsale_21finance_250826.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - bonsale-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "256m"
+        max-file: "10"
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  bonsale-network:
+    driver: bridge
