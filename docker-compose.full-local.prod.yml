@@ -2,9 +2,7 @@ version: '3.8'
 
 services:
   backend:
-    build:
-      context: .
-      dockerfile: apps/backend/Dockerfile
+    image: gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_backend:latest
     container_name: bonsale_3cx-outbound-campaign_backend
     ports:
       - "4020:4020"
@@ -25,9 +23,7 @@ services:
         max-file: "10"
 
   frontend:
-    build:
-      context: .
-      dockerfile: apps/frontend/Dockerfile
+    image: gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_frontend:latest
     container_name: bonsale_3cx-outbound-campaign_frontend
     ports:
       - "4030:80"
@@ -136,9 +132,8 @@ services:
 
   # Bonsale frontend (fe-bonsale)
   fe-bonsale:
-    # image: asia.gcr.io/drvet-server-sysstore-bonvies/fe-bonsale-local:latest
-    image: bonsale:local
-    # pull_policy: always
+    image: gcr.io/drvet-server-sysstore-bonvies/drvet-server-sysstore-bonvies/fe-bonsale-local:latest
+    pull_policy: always
     container_name: fe-bonsale
     ports:
       - "8090:80"
