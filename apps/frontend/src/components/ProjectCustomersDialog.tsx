@@ -1,6 +1,6 @@
 import { Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Pagination, Stack } from '@mui/material';
 import { useEffect, useState, useCallback } from 'react';
-import CustomerDetailsTable from './CustomerDetailsTable';
+import CustomerDetailsTable from './CallSchedule/CustomerDetailsTable';
 import useGetBonsaleProject from '../hooks/api/useGetBonsaleProject';
 import useGetBonsaleProjectCountCustomer from '../hooks/api/useGetBonsaleProjectCountCustomer';
 
