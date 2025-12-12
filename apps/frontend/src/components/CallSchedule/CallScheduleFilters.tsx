@@ -1,7 +1,8 @@
 import { Box, TextField, MenuItem, Button, Stack } from '@mui/material'
-import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker'
+import { DateTimePicker } from '@mui/x-date-pickers'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
+import { renderTimeViewClock } from '@mui/x-date-pickers'
 import dayjs, { type Dayjs } from 'dayjs'
 import type { CallScheduleFilters as FilterType } from '../../types/callSchedule'
 
@@ -49,7 +50,14 @@ export function CallScheduleFilters({
             label="建立時間（起）"
             value={filters.startDate ? dayjs(filters.startDate) : null}
             onChange={handleStartDateChange}
-            format="YYYY/MM/DD HH:mm"
+            format='yyyy/MM/dd HH:mm'
+            views={['year', 'month', 'day', 'hours', 'minutes']}
+            ampm={false}
+            viewRenderers={{
+              hours: renderTimeViewClock,
+              minutes: renderTimeViewClock,
+              seconds: renderTimeViewClock,
+            }}
             sx={{ width: '100%' }}
           />
         </LocalizationProvider>
@@ -59,7 +67,14 @@ export function CallScheduleFilters({
             label="建立時間（訖）"
             value={filters.endDate ? dayjs(filters.endDate) : null}
             onChange={handleEndDateChange}
-            format="YYYY/MM/DD HH:mm"
+            format='yyyy/MM/dd HH:mm'
+            views={['year', 'month', 'day', 'hours', 'minutes']}
+            ampm={false}
+            viewRenderers={{
+              hours: renderTimeViewClock,
+              minutes: renderTimeViewClock,
+              seconds: renderTimeViewClock,
+            }}
             sx={{ width: '100%' }}
           />
         </LocalizationProvider>
