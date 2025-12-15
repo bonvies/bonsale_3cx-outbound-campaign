@@ -13,7 +13,7 @@ import { Dashboard, Schedule } from '@mui/icons-material';
 // 路由標題映射
 const routeTitles: Record<string, string> = {
   '/': '專案自動外撥',
-  '/call-schedule': '排程自動外撥',
+  '/call-schedule': '自動語音通知',
 };
 
 function Navbar() {
@@ -81,7 +81,7 @@ function Navbar() {
               },
             }}
           >
-            排程自動外撥
+            自動語音通知
           </Button>
         </Stack>
       </Container>
