@@ -146,7 +146,7 @@ export default function CallSchedule() {
   const [filters, setFilters] = useState<FilterType>({
     startDate: null,
     endDate: null,
-    status: '全部',
+    status: ['全部'],
     search: '',
   })
   const [page, setPage] = useState(1)
@@ -175,8 +175,8 @@ export default function CallSchedule() {
     }
 
     // 過濾狀態
-    if (filters.status !== '全部') {
-      result = result.filter(item => item.callStatus === filters.status)
+    if (!filters.status.includes('全部')) {
+      result = result.filter(item => filters.status.includes(item.callStatus))
     }
 
     // 過濾分機號
@@ -206,7 +206,7 @@ export default function CallSchedule() {
     setFilters({
       startDate: null,
       endDate: null,
-      status: '全部',
+      status: ['全部'],
       search: '',
     })
     setIsSearchActive(false)
@@ -217,6 +217,54 @@ export default function CallSchedule() {
     setIsSearchActive(true)
     setPage(1)
   }
+
+  const handleRemoveFilter = (filterKey: keyof FilterType) => {
+    setFilters(prev => {
+      const newFilters = { ...prev }
+      if (filterKey === 'startDate' || filterKey === 'endDate') {
+        newFilters[filterKey] = null
+      } else if (filterKey === 'status') {
+        newFilters[filterKey] = ['全部']
+      } else if (filterKey === 'search') {
+        newFilters[filterKey] = ''
+      }
+      return newFilters
+    })
+  }
+
+  // 生成已套用的篩選條件 Chips
+  const activeFilters = useMemo(() => {
+    if (!isSearchActive) return []
+
+    const chips: Array<{ key: keyof FilterType; label: string }> = []
+
+    if (filters.startDate) {
+      chips.push({
+        key: 'startDate',
+        label: `建立時間（起）: ${dayjs(filters.startDate).format('YYYY/MM/DD HH:mm')}`
+      })
+    }
+    if (filters.endDate) {
+      chips.push({
+        key: 'endDate',
+        label: `建立時間（訖）: ${dayjs(filters.endDate).format('YYYY/MM/DD HH:mm')}`
+      })
+    }
+    if (!filters.status.includes('全部')) {
+      chips.push({
+        key: 'status',
+        label: `撥號狀態: ${filters.status.join(', ')}`
+      })
+    }
+    if (filters.search.trim()) {
+      chips.push({
+        key: 'search',
+        label: `分機: ${filters.search}`
+      })
+    }
+
+    return chips
+  }, [filters, isSearchActive])
 
   const handleAddSchedule = (data: CallScheduleFormData) => {
     console.log('新增排程通話:', data)
@@ -324,6 +372,28 @@ export default function CallSchedule() {
           overflowY: 'auto'
         }}
       >
+          {/* Active Filter Chips */}
+          {activeFilters.length > 0 && (
+            <Box
+              sx={{
+                py: 1.5,
+                px: 2,
+                bgcolor: 'background.paper',
+                borderRadius: 1,
+              }}
+            >
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" gap={1}>
+                {activeFilters.map((filter) => (
+                  <Chip
+                    key={filter.key}
+                    label={filter.label}
+                    onDelete={() => handleRemoveFilter(filter.key)}
+                    size="small"
+                  />
+                ))}
+              </Stack>
+            </Box>
+          )}
         <Table stickyHeader>
           <TableHead>
             <TableRow>

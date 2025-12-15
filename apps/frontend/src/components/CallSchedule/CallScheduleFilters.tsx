@@ -1,4 +1,4 @@
-import { Box, TextField, MenuItem, Button, Grid } from '@mui/material'
+import { Box, TextField, MenuItem, Button, Grid, Select, FormControl, InputLabel } from '@mui/material'
 import { DateTimePicker } from '@mui/x-date-pickers'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
@@ -27,8 +27,11 @@ export function CallScheduleFilters({
     onFiltersChange({ ...filters, endDate: newValue?.toDate() || null })
   }
 
-  const handleStatusChange = (status: string) => {
-    onFiltersChange({ ...filters, status })
+  const handleStatusChange = (value: string | string[]) => {
+    const statusArray = typeof value === 'string' ? [value] : value
+    // 如果陣列為空,設定為 ['全部']
+    const finalStatus = statusArray.length === 0 ? ['全部'] : statusArray.filter(s => s !== '全部')
+    onFiltersChange({ ...filters, status: finalStatus })
   }
 
   const handleSearchChange = (search: string) => {
@@ -50,7 +53,7 @@ export function CallScheduleFilters({
               label="建立時間（起）"
               value={filters.startDate ? dayjs(filters.startDate) : null}
               onChange={handleStartDateChange}
-              format='yyyy/MM/dd HH:mm'
+              format='YYYY/MM/DD HH:mm'
               views={['year', 'month', 'day', 'hours', 'minutes']}
               ampm={false}
               viewRenderers={{
@@ -58,7 +61,12 @@ export function CallScheduleFilters({
                 minutes: renderTimeViewClock,
                 seconds: renderTimeViewClock,
               }}
-              sx={{ width: '100%' }}
+              slotProps={{
+                textField: {
+                  placeholder: 'YYYY/MM/DD HH:mm',
+                  fullWidth: true
+                }
+              }}
             />
           </LocalizationProvider>
         </Grid>
@@ -69,7 +77,7 @@ export function CallScheduleFilters({
               label="建立時間（訖）"
               value={filters.endDate ? dayjs(filters.endDate) : null}
               onChange={handleEndDateChange}
-              format='yyyy/MM/dd HH:mm'
+              format='YYYY/MM/DD HH:mm'
               views={['year', 'month', 'day', 'hours', 'minutes']}
               ampm={false}
               viewRenderers={{
@@ -77,24 +85,37 @@ export function CallScheduleFilters({
                 minutes: renderTimeViewClock,
                 seconds: renderTimeViewClock,
               }}
-              sx={{ width: '100%' }}
+              slotProps={{
+                textField: {
+                  placeholder: 'YYYY/MM/DD HH:mm',
+                  fullWidth: true
+                }
+              }}
             />
           </LocalizationProvider>
         </Grid>
 
         <Grid size={3}>
-          <TextField
-            select
-            label="撥號狀態"
-            value={filters.status}
-            onChange={(e) => handleStatusChange(e.target.value)}
-            fullWidth
-          >
-            <MenuItem value="全部">全部</MenuItem>
-            <MenuItem value="排程中">排程中</MenuItem>
-            <MenuItem value="已完成">已完成</MenuItem>
-            <MenuItem value="失敗">失敗</MenuItem>
-          </TextField>
+          <FormControl fullWidth>
+            <InputLabel>撥號狀態</InputLabel>
+            <Select
+              label="撥號狀態"
+              value={filters.status.includes('全部') ? [] : filters.status}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              multiple
+              renderValue={(selected) => {
+                const selectedArray = selected as string[]
+                if (selectedArray.length === 0) {
+                  return '全部'
+                }
+                return selectedArray.join(', ')
+              }}
+            >
+              <MenuItem value="排程中">排程中</MenuItem>
+              <MenuItem value="已完成">已完成</MenuItem>
+              <MenuItem value="失敗">失敗</MenuItem>
+            </Select>
+          </FormControl>
         </Grid>
 
         <Grid size={3}>
