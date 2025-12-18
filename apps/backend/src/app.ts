@@ -7,10 +7,12 @@ import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 
 import { router as bonsaleRouter, clientWsWebHook } from './routes/bonsale';
+import { router as callScheduleRouter } from './routes/callSchedule';
 
 import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from './util/timestamp';
 import Project from './class/project';
 import { initRedis, closeRedis } from './services/redis';
+import { initDatabase, closeDatabase } from './services/database';
 import { broadcastAllProjects, broadcastError } from './components/broadcast';
 import { ProjectManager } from './class/projectManager';
 import { CallListManager } from './class/callListManager';
@@ -30,6 +32,7 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
 // Mount API routes
 app.use('/api/bonsale', bonsaleRouter);
+app.use('/api/call-schedule', callScheduleRouter);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -263,17 +266,21 @@ httpServer.listen(PORT, async () => {
   try {
     // 初始化 Redis 連接
     await initRedis();
-    
+
+    // 初始化 MySQL 資料庫連接
+    await initDatabase();
+
     logWithTimestamp({ isForce: true }, `🚀 Server is running on port ${PORT}`);
     logWithTimestamp({ isForce: true }, `🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     logWithTimestamp({ isForce: true }, `🔌 WebSocket server is running on port ${PORT}`);
     logWithTimestamp({ isForce: true }, `🖥️ Bonsale WebHook WebSocket is available on port ${PORT}/api/bonsale/webhook-ws`);
     logWithTimestamp({ isForce: true }, `🔴 Redis server is connected`);
+    logWithTimestamp({ isForce: true }, `🗄️ MySQL database is connected`);
     logWithTimestamp({ isForce: true }, `ℹ️ Version: v1.0.4`);
-    
+
     // 🆕 自動恢復之前的活躍專案
     await recoverActiveProjects();
-    
+
   } catch (error) {
     errorWithTimestamp('啟動服務器失敗:', error);
     process.exit(1);
@@ -286,6 +293,8 @@ process.on('SIGINT', async () => {
   try {
     // 關閉 Redis 連接
     await closeRedis();
+    // 關閉 MySQL 資料庫連接
+    await closeDatabase();
     process.exit(0);
   } catch (error) {
     errorWithTimestamp('關閉服務器失敗:', error);
@@ -298,6 +307,8 @@ process.on('SIGTERM', async () => {
   try {
     // 關閉 Redis 連接
     await closeRedis();
+    // 關閉 MySQL 資料庫連接
+    await closeDatabase();
     process.exit(0);
   } catch (error) {
     errorWithTimestamp('關閉服務器失敗:', error);

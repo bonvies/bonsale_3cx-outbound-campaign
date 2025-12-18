@@ -31,4 +31,4 @@ apps/backend/*.env
 .turbo
 
 # sql
-*.sql
+demo_Leo_Cloud_SQL_Export_2025-11-28.sql
