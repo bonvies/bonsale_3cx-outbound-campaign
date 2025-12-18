@@ -67,13 +67,19 @@ export function getDatabase(): mysql.Pool {
  * @param params 參數
  * @returns 查詢結果
  */
-export async function query<T = any>(
+export async function query<T = unknown>(
   sql: string,
-  params?: any[]
+  params?: unknown[]
 ): Promise<T> {
   const db = getDatabase();
-  const [rows] = await db.execute(sql, params);
-  return rows as T;
+  // 使用 query 而不是 execute，並根據是否有參數決定調用方式
+  if (params && params.length > 0) {
+    const [rows] = await db.query(sql, params);
+    return rows as T;
+  } else {
+    const [rows] = await db.query(sql);
+    return rows as T;
+  }
 }
 
 /**

@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS `call_schedules` (
   `audio_file` VARCHAR(255) NOT NULL COMMENT '鈴聲檔案名稱',
   `date` DATETIME NOT NULL COMMENT '排程日期時間',
   `extension` VARCHAR(255) NOT NULL COMMENT '分機號碼',
-  `call_status` ENUM('排程中', '已完成', '失敗') NOT NULL DEFAULT '排程中' COMMENT '撥號狀態',
+  `call_status` ENUM('scheduling', 'completed', 'failed') NOT NULL DEFAULT 'scheduling' COMMENT '撥號狀態',
   `call_record` TEXT NULL COMMENT '撥號紀錄',
   `notes` TEXT NULL COMMENT '備註',
   `notification_content` VARCHAR(255) NOT NULL COMMENT '通知內容',
