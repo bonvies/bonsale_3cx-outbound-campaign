@@ -15,15 +15,16 @@ import {
 } from '@mui/material'
 import {
   Edit,
-  Delete,
   Add,
-  Info,
+  DeleteOutlineOutlined,
+  InfoOutlined,
   Refresh,
 } from '@mui/icons-material'
 import dayjs from 'dayjs'
 import type { CallScheduleRecord, CallScheduleFilters as FilterType } from '../types/callSchedule'
 import { CallScheduleDialog, type CallScheduleFormData } from '../components/CallSchedule/CallScheduleDialog'
 import { CallScheduleFilters } from '../components/CallSchedule/CallScheduleFilters'
+import { DeleteConfirmDialog } from '../components/CallSchedule/DeleteConfirmDialog'
 
 // 模擬數據
 const testData: CallScheduleRecord[] = [
@@ -439,7 +440,7 @@ export default function CallSchedule() {
                   <TableCell align='center'>{row.callRecord || '-'}</TableCell>
                   <TableCell align='center'>{row.notes || '-'}</TableCell>
                   <TableCell align='center'>
-                    <Stack direction='row' spacing={0.5} justifyContent='center'>
+                    <Stack direction='row' justifyContent='center'>
                       <CallScheduleDialog
                         mode="edit"
                         data={{
@@ -453,28 +454,39 @@ export default function CallSchedule() {
                         }}
                         onSubmit={handleAddSchedule}
                         trigger={(onClick) => (
-                          <IconButton
-                            size="small"
-                            color="primary"
-                            onClick={onClick}
-                          >
-                            <Edit fontSize="small" />
+                          <IconButton onClick={onClick}>
+                            <Edit/>
                           </IconButton>
                         )}
                       />
-                      <IconButton
-                        size="small"
-                        color="info"
-                      >
-                        <Info fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => handleDeleteSchedule(row.id)}
-                      >
-                        <Delete fontSize="small" />
-                      </IconButton>
+                      <CallScheduleDialog
+                        mode="info"
+                        data={{
+                          extension: row.extension,
+                          date: row.date,
+                          retryInterval: row.retryInterval,
+                          maxRetries: '3',
+                          notificationContent: row.notificationContent,
+                          audioFile: row.audioFile,
+                          notes: row.notes || '',
+                        }}
+                        trigger={(onClick) => (
+                          <IconButton onClick={onClick}>
+                            <InfoOutlined/>
+                          </IconButton>
+                        )}
+                      />
+                      <DeleteConfirmDialog
+                        onConfirm={() => handleDeleteSchedule(row.id)}
+                        trigger={(onClick) => (
+                          <IconButton
+                            color='error'
+                            onClick={onClick}
+                          >
+                            <DeleteOutlineOutlined/>
+                          </IconButton>
+                        )}
+                      />
                     </Stack>
                   </TableCell>
                 </TableRow>
