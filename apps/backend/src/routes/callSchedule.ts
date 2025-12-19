@@ -5,6 +5,15 @@ import { randomUUID } from 'crypto';
 
 const router: Router = express.Router();
 
+/**
+ * 將 ISO 8601 格式轉換為 MySQL DATETIME 格式
+ * @param isoDate ISO 8601 格式字串 (e.g., '2025-12-25T07:30:00.000Z')
+ * @returns MySQL DATETIME 格式 (e.g., '2025-12-25 07:30:00')
+ */
+const toMySQLDateTime = (isoDate: string): string => {
+  return new Date(isoDate).toISOString().slice(0, 19).replace('T', ' ');
+};
+
 // Error handler helper function
 const handleError = (error: unknown, operation: string, res: Response) => {
   console.error(`Error in ${operation}:`, error instanceof Error ? error.message : String(error));
@@ -249,13 +258,16 @@ router.post('/', async function (req: Request, res: Response) {
       });
     }
 
+    // 轉換為 MySQL DATETIME 格式
+    const mysqlDate = toMySQLDateTime(date);
+
     const id = randomUUID();
     const sql = `
       INSERT INTO call_schedules
         (id, audio_file, date, extension, call_status, call_record, notes, notification_content, retry_interval)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
-    const params = [id, audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval];
+    const params = [id, audioFile, mysqlDate, extension, callStatus, callRecord, notes, notificationContent, retryInterval];
 
     await query<ResultSetHeader>(sql, params);
 
@@ -338,6 +350,9 @@ router.put('/:id', async function (req: Request, res: Response) {
       });
     }
 
+    // 轉換日期格式
+    const mysqlDate = toMySQLDateTime(date);
+
     const sql = `
       UPDATE call_schedules
       SET
@@ -351,7 +366,7 @@ router.put('/:id', async function (req: Request, res: Response) {
         retry_interval = ?
       WHERE id = ?
     `;
-    const params = [audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, id];
+    const params = [audioFile, mysqlDate, extension, callStatus, callRecord, notes, notificationContent, retryInterval, id];
 
     await query<ResultSetHeader>(sql, params);
 
@@ -426,7 +441,7 @@ router.patch('/:id', async function (req: Request, res: Response) {
     }
     if (date !== undefined) {
       updates.push('date = ?');
-      params.push(date);
+      params.push(toMySQLDateTime(date));  // 轉換日期格式
     }
     if (extension !== undefined) {
       updates.push('extension = ?');
