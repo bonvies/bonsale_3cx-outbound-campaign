@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Box,
   Table,
@@ -12,6 +12,8 @@ import {
   Chip,
   Pagination,
   Stack,
+  CircularProgress,
+  Alert,
 } from '@mui/material'
 import {
   Edit,
@@ -25,125 +27,12 @@ import type { CallScheduleRecord, CallScheduleFilters as FilterType } from '../t
 import { CallScheduleDialog, type CallScheduleFormData } from '../components/CallSchedule/CallScheduleDialog'
 import { CallScheduleFilters } from '../components/CallSchedule/CallScheduleFilters'
 import { DeleteConfirmDialog } from '../components/CallSchedule/DeleteConfirmDialog'
-
-// 模擬數據
-const testData: CallScheduleRecord[] = [
-  {
-    id: '1',
-    audioFile: '預設鈴聲',
-    date: '2025/12/05 07:30',
-    extension: 'A館 10F - 1002',
-    callStatus: '排程中',
-    callRecord: '-',
-    notes: '',
-    notificationContent: '標準叫醒服務',
-    retryInterval: '5',
-  },
-  {
-    id: '2',
-    audioFile: '預設鈴聲',
-    date: '2025/12/05 06:30',
-    extension: 'B館 11F - 1108',
-    callStatus: '排程中',
-    callRecord: '-',
-    notes: '明天會議叫醒',
-    notificationContent: '標準叫醒服務',
-    retryInterval: '5',
-  },
-  {
-    id: '3',
-    date: '2025/12/04 06:30',
-    extension: 'B館 11F - 1108',
-    callStatus: '排程中',
-    callRecord: '-',
-    notes: '',
-    notificationContent: '標準叫醒服務',
-    retryInterval: '5',
-    audioFile: '預設鈴聲'
-  },
-  {
-    id: '4',
-    date: '2025/12/04 06:00',
-    extension: 'B館 11F - 1101',
-    callStatus: '已完成',
-    callRecord: '已接聽',
-    notes: '',
-    notificationContent: '標準叫醒服務',
-    retryInterval: '5',
-    audioFile: '預設鈴聲'
-  },
-  {
-    id: '5',
-    date: '2025/12/03 07:15',
-    extension: 'B館 11F - 1108',
-    callStatus: '排程中',
-    callRecord: '-',
-    notes: '',
-    notificationContent: '標準叫醒服務',
-    retryInterval: '5',
-    audioFile: '預設鈴聲'
-  },
-  {
-    id: '6',
-    date: '2025/12/03 06:45',
-    extension: 'B館 11F - 1103',
-    callStatus: '失敗',
-    callRecord: '未接聽',
-    notes: '',
-    notificationContent: '標準叫醒服務',
-    retryInterval: '5',
-    audioFile: '預設鈴聲'
-  },
-  {
-    id: '7',
-    date: '2025/12/03 06:30',
-    extension: 'B館 11F - 1108',
-    callStatus: '排程中',
-    callRecord: '-',
-    notes: '',
-    notificationContent: '標準叫醒服務',
-    retryInterval: '5',
-    audioFile: '預設鈴聲'
-  },
-  {
-    id: '8',
-    date: '2025/12/03 06:00',
-    extension: 'B館 11F - 1108',
-    callStatus: '已完成',
-    callRecord: '已接聽',
-    notes: '提醒飛機起飛時間',
-    notificationContent: '標準叫醒服務',
-    retryInterval: '5',
-    audioFile: '預設鈴聲'
-  },
-  {
-    id: '9',
-    date: '2025/12/03 05:30',
-    extension: 'C館 12F - 1201',
-    callStatus: '已完成',
-    callRecord: '已接聽 — 車呼成功',
-    notes: '',
-    notificationContent: '標準叫醒服務',
-    retryInterval: '5',
-    audioFile: '預設鈴聲'
-  },
-  {
-    id: '10',
-    date: '2025/12/02 09:00',
-    extension: 'B館 11F - 1108',
-    callStatus: '失敗',
-    callRecord: '系統錯誤，無法完成撥號',
-    notes: '',
-    notificationContent: '標準叫醒服務',
-    retryInterval: '5',
-    audioFile: '預設鈴聲'
-  },
-]
+import * as callScheduleApi from '../services/callScheduleApi'
 
 const PAGE_SIZE = 10
 
 export default function CallSchedule() {
-  const [mockList, setMockList] = useState(testData)
+  const [dataList, setDataList] = useState<CallScheduleRecord[]>([])
   const [filters, setFilters] = useState<FilterType>({
     startDate: null,
     endDate: null,
@@ -151,57 +40,59 @@ export default function CallSchedule() {
     search: '',
   })
   const [page, setPage] = useState(1)
-  const [isSearchActive, setIsSearchActive] = useState(false)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalRecords, setTotalRecords] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // 過濾資料
-  const filteredList = useMemo(() => {
-    if (!isSearchActive) {
-      return mockList
+  // 取得資料
+  const fetchData = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const queryParams: callScheduleApi.CallScheduleQueryParams = {
+        page,
+        limit: PAGE_SIZE,
+        sortBy: 'date',
+        sortOrder: 'DESC',
+      }
+
+      // 過濾條件
+      if (filters.startDate) {
+        queryParams.dateFrom = dayjs(filters.startDate).toISOString()
+      }
+      if (filters.endDate) {
+        queryParams.dateTo = dayjs(filters.endDate).toISOString()
+      }
+      if (!filters.status.includes('全部') && filters.status.length > 0) {
+        // 轉換中文狀態為英文
+        const englishStatus = callScheduleApi.reverseStatusMap[filters.status[0]]
+        if (englishStatus) {
+          queryParams.callStatus = englishStatus
+        }
+      }
+      if (filters.search.trim()) {
+        queryParams.search = filters.search
+      }
+
+      const result = await callScheduleApi.getCallSchedules(queryParams)
+      setDataList(result.data)
+      setTotalPages(result.pagination.totalPages)
+      setTotalRecords(result.pagination.total)
+    } catch (err) {
+      console.error('Failed to fetch call schedules:', err)
+      setError('載入資料失敗，請稍後再試')
+    } finally {
+      setLoading(false)
     }
+  }
 
-    let result = mockList
-
-    // 過濾時間區間
-    if (filters.startDate) {
-      result = result.filter(item => {
-        const itemDate = dayjs(item.date, 'YYYY/MM/DD HH:mm')
-        return itemDate.isAfter(dayjs(filters.startDate)) || itemDate.isSame(dayjs(filters.startDate))
-      })
-    }
-    if (filters.endDate) {
-      result = result.filter(item => {
-        const itemDate = dayjs(item.date, 'YYYY/MM/DD HH:mm')
-        return itemDate.isBefore(dayjs(filters.endDate)) || itemDate.isSame(dayjs(filters.endDate))
-      })
-    }
-
-    // 過濾狀態
-    if (!filters.status.includes('全部')) {
-      result = result.filter(item => filters.status.includes(item.callStatus))
-    }
-
-    // 過濾分機號
-    if (filters.search.trim()) {
-      result = result.filter(item =>
-        item.extension.toLowerCase().includes(filters.search.toLowerCase())
-      )
-    }
-
-    return result
-  }, [mockList, filters, isSearchActive])
-
-  // 計算過濾後的總頁數
-  const totalPages = useMemo(() => {
-    return Math.ceil(filteredList.length / PAGE_SIZE)
-  }, [filteredList.length])
-
-  // 計算當前頁面應該顯示的數據
-  const paginatedList = useMemo(() => {
-    return filteredList.slice(
-      (page - 1) * PAGE_SIZE,
-      page * PAGE_SIZE
-    )
-  }, [filteredList, page])
+  // 初始載入和篩選條件變更時重新載入
+  useEffect(() => {
+    fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, filters])
 
   const handleClearFilters = () => {
     setFilters({
@@ -210,12 +101,10 @@ export default function CallSchedule() {
       status: ['全部'],
       search: '',
     })
-    setIsSearchActive(false)
     setPage(1)
   }
 
   const handleSearch = () => {
-    setIsSearchActive(true)
     setPage(1)
   }
 
@@ -235,8 +124,6 @@ export default function CallSchedule() {
 
   // 生成已套用的篩選條件 Chips
   const activeFilters = useMemo(() => {
-    if (!isSearchActive) return []
-
     const chips: Array<{ key: keyof FilterType; label: string }> = []
 
     if (filters.startDate) {
@@ -265,27 +152,62 @@ export default function CallSchedule() {
     }
 
     return chips
-  }, [filters, isSearchActive])
+  }, [filters])
 
-  const handleAddSchedule = (data: CallScheduleFormData) => {
-    console.log('新增排程通話:', data)
-    const newRecord: CallScheduleRecord = {
-      id: (mockList.length + 1).toString(),
-      audioFile: data.audioFile,
-      date: data.date,
-      extension: data.extension,
-      callStatus: '排程中',
-      callRecord: '-',
-      notes: data.notes,
-      notificationContent: data.notificationContent,
-      retryInterval: data.retryInterval,
+  const handleAddSchedule = async (data: CallScheduleFormData) => {
+    try {
+      setLoading(true)
+      const createData: callScheduleApi.CreateCallScheduleDto = {
+        audioFile: data.audioFile,
+        date: dayjs(data.date, 'YYYY/MM/DD HH:mm').toISOString(),
+        extension: data.extension,
+        notificationContent: data.notificationContent,
+        retryInterval: parseInt(data.retryInterval),
+        notes: data.notes,
+      }
+      await callScheduleApi.createCallSchedule(createData)
+      await fetchData() // 重新載入資料
+    } catch (err) {
+      console.error('Failed to create schedule:', err)
+      setError('新增失敗，請稍後再試')
+    } finally {
+      setLoading(false)
     }
-    setMockList([newRecord, ...mockList])
   }
 
-  const handleDeleteSchedule = (id: string) => {
-    console.log('刪除排程通話:', id)
-    setMockList(mockList.filter((item) => item.id !== id))
+  const handleDeleteSchedule = async (id: string) => {
+    try {
+      setLoading(true)
+      await callScheduleApi.deleteCallSchedule(id)
+      await fetchData() // 重新載入資料
+    } catch (err) {
+      console.error('Failed to delete schedule:', err)
+      setError('刪除失敗，請稍後再試')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEditSchedule = async (id: string, data: CallScheduleFormData) => {
+    try {
+      setLoading(true)
+      const updateData: callScheduleApi.UpdateCallScheduleDto = {
+        audioFile: data.audioFile,
+        date: dayjs(data.date, 'YYYY/MM/DD HH:mm').toISOString(),
+        extension: data.extension,
+        callStatus: callScheduleApi.reverseStatusMap['排程中'], // 編輯時預設為排程中
+        notificationContent: data.notificationContent,
+        retryInterval: parseInt(data.retryInterval),
+        notes: data.notes,
+      }
+      await callScheduleApi.updateCallSchedule(id, updateData)
+      await fetchData() // 重新載入資料
+    } catch (err) {
+      console.error('Failed to update schedule:', err)
+      setError('更新失敗，請稍後再試')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const getStatusColor = (status: string) => {
@@ -345,6 +267,8 @@ export default function CallSchedule() {
           size="small"
           color="primary"
           title="重新整理"
+          onClick={fetchData}
+          disabled={loading}
         >
           <Refresh />
         </IconButton>
@@ -352,7 +276,7 @@ export default function CallSchedule() {
         <Box sx={{ ml: 'auto' }}>
           <Stack direction="row" spacing={1} alignItems="center">
             <Typography variant="body2" color="text.secondary">
-              共 {filteredList.length} 筆
+              共 {totalRecords} 筆
             </Typography>
             <Pagination
               count={totalPages}
@@ -364,6 +288,13 @@ export default function CallSchedule() {
           </Stack>
         </Box>
       </Stack>
+
+      {/* Error Alert */}
+      {error && (
+        <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
       {/* Table */}
       <Box
@@ -419,14 +350,20 @@ export default function CallSchedule() {
             </TableRow>
           </TableHead>
           <TableBody sx={{ backgroundColor: 'white' }}>
-            {paginatedList.length === 0 ? (
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={6} align="center" sx={{ height: '100%', borderBottom: 'none', py: 8 }}>
+                  <CircularProgress />
+                </TableCell>
+              </TableRow>
+            ) : dataList.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ height: '100%', borderBottom: 'none', color: '#888', py: 4, fontSize: '1.5rem' }}>
                   沒有資料
                 </TableCell>
               </TableRow>
             ) : (
-              paginatedList.map((row) => (
+              dataList.map((row) => (
                 <TableRow key={row.id}>
                   <TableCell align='center'>{row.date}</TableCell>
                   <TableCell align='center'>{row.extension}</TableCell>
@@ -452,7 +389,7 @@ export default function CallSchedule() {
                           audioFile: row.audioFile,
                           notes: row.notes || '',
                         }}
-                        onSubmit={handleAddSchedule}
+                        onSubmit={(data) => handleEditSchedule(row.id, data)}
                         trigger={(onClick) => (
                           <IconButton onClick={onClick}>
                             <Edit/>
