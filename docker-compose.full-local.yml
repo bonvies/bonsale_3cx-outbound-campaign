@@ -136,18 +136,24 @@ services:
 
   # Bonsale frontend (fe-bonsale)
   fe-bonsale:
-    # image: asia.gcr.io/drvet-server-sysstore-bonvies/fe-bonsale-local:latest
-    image: bonsale:local
+    image: asia.gcr.io/drvet-server-sysstore-bonvies/fe-bonsale-local:latest
+    # image: bonsale:local
     # pull_policy: always
     container_name: fe-bonsale
     ports:
-      - "8090:80"
+      - "80:80"
     mem_limit: 8GB
     env_file:
       - fe-bonsale.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # 讓容器能訪問宿主機
     depends_on:
       telesale-api:
         condition: service_started
+    volumes:
+      # 這行是關鍵：掛載一個標記檔案，讓 Nginx 知道現在是 Compose 環境
+      # 可以直接用 /dev/null 模擬一個空檔案，或者在專案裡建一個空檔
+      - /dev/null:/etc/nginx/is_compose 
     networks:
       - bonsale-network
     restart: unless-stopped
