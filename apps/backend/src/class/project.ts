@@ -1422,35 +1422,51 @@ export default class Project {
               let post9000Success = false;
               for (let tryPost9000Times = 1; tryPost9000Times <= 3; tryPost9000Times++) {
                 try {
-                  logWithTimestamp(`嘗試呼叫 post9000 (第 ${tryPost9000Times} 次)`);
+                  logWithTimestamp(`嘗試呼叫 post9000 (第 ${tryPost9000Times} 次) - 電話: ${previousCallRecord.phone}`);
                   const post9000Result = await post9000(previousCallRecord.description, previousCallRecord.description2, previousCallRecord.phone);
                   
                   if (post9000Result.success) {
-                    logWithTimestamp({ isForce: true }, `✅ post9000 成功 (第 ${tryPost9000Times} 次嘗試): ${JSON.stringify(post9000Result.data)}`);
-                    post9000Success = true;
-                    break; // 成功後跳出重試迴圈
+                    // * 因為 21 世紀有可能會成功 但其實是錯的 所以這邊要多加判斷
+                    const apiData = post9000Result.data;
+                    const isApiSuccess = apiData?.StatusCode === 0 && apiData?.Message === 'Success';
+
+                    if (isApiSuccess) {
+                      logWithTimestamp({ isForce: true }, `✅ post9000 成功 (第 ${tryPost9000Times} 次嘗試) - 電話: ${previousCallRecord.phone} - ${JSON.stringify(post9000Result.data)}`);
+                      post9000Success = true;
+                      break; // 成功後跳出重試迴圈
+                    } else {
+                      const errorMsg = `❌ post9000 業務邏輯失敗 (第 ${tryPost9000Times} 次) - 電話: ${previousCallRecord.phone} - StatusCode=${apiData?.StatusCode}, Message=${apiData?.Message}`;
+                      errorWithTimestamp(errorMsg);
+
+                      if (tryPost9000Times < 3) {
+                        logWithTimestamp(`⏳ 等待 2 秒後重試 post9000 - 電話: ${previousCallRecord.phone}`);
+                        await this.delay(2000); // 等待 2 秒後重試
+                      } else {
+                        errorWithTimestamp({ isForce: true }, `❌ post9000 已達最大重試次數 (${tryPost9000Times} 次)，停止嘗試 - 電話: ${previousCallRecord.phone} - StatusCode=${apiData?.StatusCode}, Message=${apiData?.Message}`);
+                      }
+                    }
                   } else {
-                    const errorMsg = `❌ post9000 失敗 (第 ${tryPost9000Times} 次): ${post9000Result.error?.error || '未知錯誤'}`;
+                    const errorMsg = `❌ post9000 失敗 (第 ${tryPost9000Times} 次) - 電話: ${previousCallRecord.phone} - ${post9000Result.error?.error || '未知錯誤'}`;
                     errorWithTimestamp(errorMsg);
                     await this.handleApiError('post9000', post9000Result, false); // 不拋出錯誤，只記錄
-                    
+
                     if (tryPost9000Times < 3) {
-                      logWithTimestamp(`⏳ 等待 2 秒後重試 post9000`);
+                      logWithTimestamp(`⏳ 等待 2 秒後重試 post9000 - 電話: ${previousCallRecord.phone}`);
                       await this.delay(2000); // 等待 2 秒後重試
                     } else {
-                      errorWithTimestamp({ isForce: true }, `❌ post9000 已達最大重試次數 (${tryPost9000Times} 次)，停止嘗試: ${post9000Result.error?.error || '未知錯誤'}`);
+                      errorWithTimestamp({ isForce: true }, `❌ post9000 已達最大重試次數 (${tryPost9000Times} 次)，停止嘗試 - 電話: ${previousCallRecord.phone} - ${post9000Result.error?.error || '未知錯誤'}`);
                     }
                   }
                 } catch (error) {
-                  const errorMsg = `❌ post9000 異常 (第 ${tryPost9000Times} 次): ${error instanceof Error ? error.message : String(error)}`;
+                  const errorMsg = `❌ post9000 異常 (第 ${tryPost9000Times} 次) - 電話: ${previousCallRecord.phone} - ${error instanceof Error ? error.message : String(error)}`;
                   errorWithTimestamp(errorMsg);
                   await this.setError(errorMsg);
-                  
+
                   if (tryPost9000Times < 3) {
-                    logWithTimestamp(`⏳ 等待 2 秒後重試 post9000`);
+                    logWithTimestamp(`⏳ 等待 2 秒後重試 post9000 - 電話: ${previousCallRecord.phone}`);
                     await this.delay(2000); // 等待 2 秒後重試
                   } else {
-                    errorWithTimestamp(`❌ post9000 異常已達最大重試次數 (${tryPost9000Times} 次)，停止嘗試`);
+                    errorWithTimestamp(`❌ post9000 異常已達最大重試次數 (${tryPost9000Times} 次)，停止嘗試 - 電話: ${previousCallRecord.phone}`);
                   }
                 }
               }
