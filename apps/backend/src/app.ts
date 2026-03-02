@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
-import { createServer } from 'http';
+import { createServer as createHttpServer } from 'http';
 import { WebSocketServer } from 'ws';
 
 import { router as bonsaleRouter, clientWsWebHook } from './routes/bonsale';
@@ -15,11 +15,15 @@ import { broadcastAllProjects, broadcastError } from './components/broadcast';
 import { ProjectManager } from './class/projectManager';
 import { CallListManager } from './class/callListManager';
 
+import fiasHandler from './components/fiasHandler';
+import { createServer as createFiasServer } from './util/fias';
+
 // Load environment variables
 dotenv.config();
 
 const app: express.Application = express();
 const PORT = process.env.HTTP_PORT || 4020;
+const FIAS_PORT = process.env.FIAS_PORT || 4021;
 
 // Middleware
 app.use(helmet()); // Security headers
@@ -59,7 +63,7 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
 });
 
 // Start server
-const httpServer = createServer(app);
+const httpServer = createHttpServer(app);
 
 // 建立主要 WebSocket 服務器
 const mainWebSocketServer = new WebSocketServer({ noServer: true });
@@ -259,6 +263,7 @@ mainWebSocketServer.on('connection', async (wsClient) => {
   });
 });
 
+// 自動外撥 http 端點
 httpServer.listen(PORT, async () => {
   try {
     // 初始化 Redis 連接
@@ -303,6 +308,19 @@ process.on('SIGTERM', async () => {
     errorWithTimestamp('關閉服務器失敗:', error);
     process.exit(1);
   }
+});
+
+// 啟動 FIAS TCP 服務器
+const fiasServer = createFiasServer(async (msg, conn) => {
+  console.log('--- FIAS TCP 服務器收到訊息 ---');
+  console.log('訊息內容:', msg);
+
+  // 根據 msg.type 處理不同類型的訊息
+  fiasHandler(msg, conn);
+});
+
+fiasServer.listen(FIAS_PORT, () => {
+  logWithTimestamp({ isForce: true }, `📡 FIAS TCP server is running on port ${FIAS_PORT}`);
 });
 
 export default app;
