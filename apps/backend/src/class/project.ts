@@ -915,8 +915,6 @@ export default class Project {
 
     // 檢查是否有 recurrence 排程
     if (this.recurrence) {
-      // TODO 跟 Victor 確認時區問題 決定前端要 UTC - 8
-      // 所以我這邊就不用轉換 
       const isInSchedule = isTodayInSchedule(this.recurrence);
       if (!isInSchedule) {
         warnWithTimestamp(`今天不在 recurrence 排程內，跳過外撥`);
@@ -933,9 +931,9 @@ export default class Project {
       if (!bonsaleCompanySys.success) {
         warnWithTimestamp(`無法獲取公司系統時區，跳過外撥`);
         this.setWarning('無法獲取公司系統時區，預設時區 Asia/Taipei');
+      } else {
+        companyTimeZone = bonsaleCompanySys.data.timezoneIANA || 'Asia/Taipei';
       }
-
-      companyTimeZone = bonsaleCompanySys.data.timezoneIANA || 'Asia/Taipei';
       logWithTimestamp(`公司系統時區: ${companyTimeZone}`);
 
       const [currentHour, currentMinute] = formatInTimeZone(new Date(), companyTimeZone, 'HH:mm')
