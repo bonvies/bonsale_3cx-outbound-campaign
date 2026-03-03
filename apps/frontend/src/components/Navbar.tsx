@@ -23,7 +23,7 @@ function Navbar() {
         sx={{ maxWidth: (theme) => theme.breakpoints.values.laptop, width: '100%' }}
       >
         <Typography variant='h5' fontWeight='400'>
-          專案自動外撥監控面板 - 二代
+          BonTalk 專案自動外撥監控面板
         </Typography>
       </Container>
     </Box>
