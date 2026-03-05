@@ -43,7 +43,7 @@ export default function Layout() {
           pointerEvents: 'none',
         }}
       >
-        v1.0.4
+        v1.0.5
       </Box>
     </Box>
   );
