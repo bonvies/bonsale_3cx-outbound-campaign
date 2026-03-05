@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo } from 'react'
+import useSWR from 'swr'
 import {
   Box,
   Table,
@@ -21,7 +22,7 @@ import {
   Refresh,
 } from '@mui/icons-material'
 import dayjs from 'dayjs'
-import type { CallScheduleRecord, CallScheduleFilters as FilterType } from '../types/callSchedule'
+import type { CallScheduleFilters as FilterType } from '../types/callSchedule'
 import { CallScheduleDialog, type CallScheduleFormData } from '../components/CallSchedule/CallScheduleDialog'
 import { CallScheduleFilters } from '../components/CallSchedule/CallScheduleFilters'
 import { DeleteConfirmDialog } from '../components/CallSchedule/DeleteConfirmDialog'
@@ -30,78 +31,74 @@ import {
   createCallSchedule,
   updateCallSchedule,
   deleteCallSchedule,
+  type FetchCallSchedulesParams,
 } from '../api/CallSchedule'
 
 const PAGE_SIZE = 10
 
+const defaultFilters: FilterType = {
+  startDate: null,
+  endDate: null,
+  status: ['全部'],
+  extension: '',
+}
+
+type FilterChipKey = 'extension' | 'startDate' | 'endDate' | 'status'
+
 export default function CallSchedule() {
-  const [records, setRecords] = useState<CallScheduleRecord[]>([])
-  const [totalCount, setTotalCount] = useState(0)
-  const [filters, setFilters] = useState<FilterType>({
-    startDate: null,
-    endDate: null,
-    status: ['全部'],
-    search: '',
+  // 篩選 UI 的 draft 狀態（用戶正在編輯中）
+  const [filters, setFilters] = useState<FilterType>(defaultFilters)
+
+  // SWR 實際抓取的參數（按下搜尋後才更新）
+  const [fetchParams, setFetchParams] = useState<FetchCallSchedulesParams>({
+    page: 1,
+    limit: PAGE_SIZE,
+    sort: 'created_at',
+    order: 'desc',
   })
-  const [page, setPage] = useState(1)
-  const [isSearchActive, setIsSearchActive] = useState(false)
 
-  const doFetch = useCallback(async (opts: {
-    page: number
-    isSearchActive: boolean
-    filters: FilterType
-  }) => {
-    try {
-      const result = await fetchCallSchedules({ ...opts, pageSize: PAGE_SIZE })
-      setRecords(result.data)
-      setTotalCount(result.total)
-    } catch (err) {
-      console.error('Failed to fetch call schedules:', err)
-    }
-  }, [])
+  const { data, mutate } = useSWR(fetchParams, fetchCallSchedules)
 
-  useEffect(() => {
-    doFetch({ page: 1, isSearchActive: false, filters })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const records = data?.data ?? []
+  const totalCount = data?.total ?? 0
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
   const handleSearch = () => {
-    setIsSearchActive(true)
-    setPage(1)
-    doFetch({ page: 1, isSearchActive: true, filters })
+    setFetchParams(prev => ({
+      page: 1,
+      limit: PAGE_SIZE,
+      sort: prev.sort,
+      order: prev.order,
+      ...(filters.extension.trim() && { extension: filters.extension.trim() }),
+      ...(filters.startDate && { startDate: dayjs(filters.startDate).format('YYYY/MM/DD HH:mm') }),
+      ...(filters.endDate && { endDate: dayjs(filters.endDate).format('YYYY/MM/DD HH:mm') }),
+      ...(!filters.status.includes('全部') && { status: filters.status.join(',') }),
+    }))
   }
 
   const handleClearFilters = () => {
-    const defaultFilters: FilterType = { startDate: null, endDate: null, status: ['全部'], search: '' }
     setFilters(defaultFilters)
-    setIsSearchActive(false)
-    setPage(1)
-    doFetch({ page: 1, isSearchActive: false, filters: defaultFilters })
+    setFetchParams(prev => ({ page: 1, limit: PAGE_SIZE, sort: prev.sort, order: prev.order }))
   }
 
-  const handleRemoveFilter = (filterKey: keyof FilterType) => {
+  const handleRemoveFilter = (key: FilterChipKey) => {
     const newFilters = { ...filters }
-    if (filterKey === 'startDate' || filterKey === 'endDate') {
-      newFilters[filterKey] = null
-    } else if (filterKey === 'status') {
-      newFilters.status = ['全部']
-    } else if (filterKey === 'search') {
-      newFilters.search = ''
-    }
+    if (key === 'extension') newFilters.extension = ''
+    else if (key === 'startDate') newFilters.startDate = null
+    else if (key === 'endDate') newFilters.endDate = null
+    else if (key === 'status') newFilters.status = ['全部']
     setFilters(newFilters)
-    setPage(1)
-    doFetch({ page: 1, isSearchActive: true, filters: newFilters })
+    setFetchParams(prev => ({ ...prev, page: 1, [key]: undefined }))
   }
 
   const handlePageChange = (_: React.ChangeEvent<unknown>, value: number) => {
-    setPage(value)
-    doFetch({ page: value, isSearchActive, filters })
+    setFetchParams(prev => ({ ...prev, page: value }))
   }
 
   const handleAddSchedule = async (data: CallScheduleFormData) => {
     try {
       await createCallSchedule(data)
-      doFetch({ page, isSearchActive, filters })
+      mutate()
     } catch (err) {
       console.error('Failed to create call schedule:', err)
     }
@@ -111,7 +108,7 @@ export default function CallSchedule() {
     if (!data.id) return
     try {
       await updateCallSchedule(data.id, data)
-      doFetch({ page, isSearchActive, filters })
+      mutate()
     } catch (err) {
       console.error('Failed to update call schedule:', err)
     }
@@ -120,47 +117,21 @@ export default function CallSchedule() {
   const handleDeleteSchedule = async (id: string) => {
     try {
       await deleteCallSchedule(id)
-      doFetch({ page, isSearchActive, filters })
+      mutate()
     } catch (err) {
       console.error('Failed to delete call schedule:', err)
     }
   }
 
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
-
-  // 生成已套用的篩選條件 Chips
+  // 從已提交的 fetchParams 直接推導 chips，不需要 isSearchActive
   const activeFilters = useMemo(() => {
-    if (!isSearchActive) return []
-
-    const chips: Array<{ key: keyof FilterType; label: string }> = []
-
-    if (filters.startDate) {
-      chips.push({
-        key: 'startDate',
-        label: `建立時間（起）: ${dayjs(filters.startDate).format('YYYY/MM/DD HH:mm')}`
-      })
-    }
-    if (filters.endDate) {
-      chips.push({
-        key: 'endDate',
-        label: `建立時間（訖）: ${dayjs(filters.endDate).format('YYYY/MM/DD HH:mm')}`
-      })
-    }
-    if (!filters.status.includes('全部')) {
-      chips.push({
-        key: 'status',
-        label: `撥號狀態: ${filters.status.join(', ')}`
-      })
-    }
-    if (filters.search.trim()) {
-      chips.push({
-        key: 'search',
-        label: `分機: ${filters.search}`
-      })
-    }
-
+    const chips: Array<{ key: FilterChipKey; label: string }> = []
+    if (fetchParams.extension) chips.push({ key: 'extension', label: `分機: ${fetchParams.extension}` })
+    if (fetchParams.startDate) chips.push({ key: 'startDate', label: `建立時間（起）: ${fetchParams.startDate}` })
+    if (fetchParams.endDate) chips.push({ key: 'endDate', label: `建立時間（訖）: ${fetchParams.endDate}` })
+    if (fetchParams.status) chips.push({ key: 'status', label: `撥號狀態: ${fetchParams.status}` })
     return chips
-  }, [filters, isSearchActive])
+  }, [fetchParams])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -215,7 +186,7 @@ export default function CallSchedule() {
           size="small"
           color="primary"
           title="重新整理"
-          onClick={() => doFetch({ page, isSearchActive, filters })}
+          onClick={() => mutate()}
         >
           <Refresh />
         </IconButton>
@@ -227,7 +198,7 @@ export default function CallSchedule() {
             </Typography>
             <Pagination
               count={totalPages}
-              page={page}
+              page={fetchParams.page}
               onChange={handlePageChange}
               size="small"
               color="primary"

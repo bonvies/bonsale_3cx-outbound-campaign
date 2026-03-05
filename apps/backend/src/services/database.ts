@@ -16,7 +16,7 @@ export async function initDatabase(): Promise<void> {
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS call_schedules (
-      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      id                   TEXT PRIMARY KEY,
       audio_file           TEXT NOT NULL,
       date                 TEXT NOT NULL,
       extension            TEXT NOT NULL,

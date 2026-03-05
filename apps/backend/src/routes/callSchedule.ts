@@ -1,10 +1,11 @@
 import express, { Router, Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 import { getDatabase } from '../services/database';
 
 const router: Router = express.Router();
 
 interface DbRow {
-  id: number;
+  id: string;
   audio_file: string;
   date: string;
   extension: string;
@@ -19,7 +20,7 @@ interface DbRow {
 
 function rowToRecord(row: DbRow) {
   return {
-    id: String(row.id),
+    id: row.id,
     audioFile: row.audio_file,
     date: row.date,
     extension: row.extension,
@@ -33,11 +34,25 @@ function rowToRecord(row: DbRow) {
   };
 }
 
+const SORTABLE_FIELDS: Record<string, string> = {
+  date: 'date',
+  created_at: 'created_at',
+  extension: 'extension',
+  call_status: 'call_status',
+};
+
 // GET /api/call-schedule
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDatabase();
-    const { startDate, endDate, status, search, page = '1', pageSize = '10' } = req.query;
+    const {
+      startDate, endDate, status, extension,
+      page = '1', limit = '10',
+      sort = 'created_at', order = 'desc',
+    } = req.query;
+
+    const sortField = SORTABLE_FIELDS[sort as string] ?? 'created_at';
+    const sortOrder = (order as string).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
     let whereClause = 'WHERE 1=1';
     const params: (string | number)[] = [];
@@ -57,9 +72,9 @@ router.get('/', (req: Request, res: Response) => {
         params.push(...statusList);
       }
     }
-    if (search) {
+    if (extension) {
       whereClause += ' AND extension LIKE ?';
-      params.push(`%${search as string}%`);
+      params.push(`%${extension as string}%`);
     }
 
     const countParams = [...params];
@@ -67,11 +82,11 @@ router.get('/', (req: Request, res: Response) => {
     const total = countResult.count;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const pageSizeNum = Math.max(1, parseInt(pageSize as string, 10) || 10);
-    params.push(pageSizeNum, (pageNum - 1) * pageSizeNum);
+    const limitNum = Math.max(1, parseInt(limit as string, 10) || 10);
+    params.push(limitNum, (pageNum - 1) * limitNum);
 
     const rows = db.prepare(
-      `SELECT * FROM call_schedules ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+      `SELECT * FROM call_schedules ${whereClause} ORDER BY ${sortField} ${sortOrder} LIMIT ? OFFSET ?`
     ).all(...params) as DbRow[];
 
     res.json({ success: true, data: rows.map(rowToRecord), total });
@@ -92,14 +107,15 @@ router.post('/', (req: Request, res: Response) => {
       return;
     }
 
+    const newId = randomUUID();
     const createdAt = new Date().toISOString();
-    const result = db.prepare(`
+    db.prepare(`
       INSERT INTO call_schedules
-        (audio_file, date, extension, call_status, call_record, notes, notification_content, retry_interval, max_retries, created_at)
-      VALUES (?, ?, ?, '排程中', NULL, ?, ?, ?, ?, ?)
-    `).run(audioFile, date, extension, notes, notificationContent, retryInterval, maxRetries, createdAt);
+        (id, audio_file, date, extension, call_status, call_record, notes, notification_content, retry_interval, max_retries, created_at)
+      VALUES (?, ?, ?, ?, '排程中', NULL, ?, ?, ?, ?, ?)
+    `).run(newId, audioFile, date, extension, notes, notificationContent, retryInterval, maxRetries, createdAt);
 
-    res.json({ success: true, data: { id: String(result.lastInsertRowid) } });
+    res.json({ success: true, data: { id: newId } });
   } catch (error) {
     console.error('[CallSchedule] POST error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });

@@ -16,7 +16,7 @@ export interface CallScheduleFilters {
   startDate: Date | null
   endDate: Date | null
   status: string[] // 可多選: ['全部'] | ['排程中', '已完成', '失敗']
-  search: string
+  extension: string
 }
 
 export type CallStatus = '排程中' | '已完成' | '失敗'

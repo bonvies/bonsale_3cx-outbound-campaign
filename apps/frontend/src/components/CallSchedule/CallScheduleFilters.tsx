@@ -34,8 +34,8 @@ export function CallScheduleFilters({
     onFiltersChange({ ...filters, status: finalStatus })
   }
 
-  const handleSearchChange = (search: string) => {
-    onFiltersChange({ ...filters, search })
+  const handleSearchChange = (extension: string) => {
+    onFiltersChange({ ...filters, extension })
   }
 
   return (
@@ -122,7 +122,7 @@ export function CallScheduleFilters({
           <TextField
             label="分機"
             placeholder="請選擇或輸入分機"
-            value={filters.search}
+            value={filters.extension}
             onChange={(e) => handleSearchChange(e.target.value)}
             fullWidth
           />

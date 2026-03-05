@@ -1,6 +1,5 @@
 import axios from 'axios'
-import dayjs from 'dayjs'
-import type { CallScheduleRecord, CallScheduleFilters } from '../../types/callSchedule'
+import type { CallScheduleRecord } from '../../types/callSchedule'
 import type { CallScheduleFormData } from '../../components/CallSchedule/CallScheduleDialog'
 
 const { hostname } = window.location
@@ -16,9 +15,13 @@ const BASE_URL = `${HTTP_HOST}/api/call-schedule`
 
 export interface FetchCallSchedulesParams {
   page: number
-  pageSize: number
-  isSearchActive: boolean
-  filters: CallScheduleFilters
+  limit: number
+  sort: string
+  order: 'asc' | 'desc'
+  extension?: string
+  startDate?: string
+  endDate?: string
+  status?: string // comma-separated, e.g. "排程中,已完成"
 }
 
 export interface FetchCallSchedulesResult {
@@ -29,23 +32,14 @@ export interface FetchCallSchedulesResult {
 export async function fetchCallSchedules(opts: FetchCallSchedulesParams): Promise<FetchCallSchedulesResult> {
   const params: Record<string, string> = {
     page: String(opts.page),
-    pageSize: String(opts.pageSize),
+    limit: String(opts.limit),
+    sort: opts.sort,
+    order: opts.order,
   }
-
-  if (opts.isSearchActive) {
-    if (opts.filters.startDate) {
-      params.startDate = dayjs(opts.filters.startDate).format('YYYY/MM/DD HH:mm')
-    }
-    if (opts.filters.endDate) {
-      params.endDate = dayjs(opts.filters.endDate).format('YYYY/MM/DD HH:mm')
-    }
-    if (!opts.filters.status.includes('全部')) {
-      params.status = opts.filters.status.join(',')
-    }
-    if (opts.filters.search.trim()) {
-      params.search = opts.filters.search.trim()
-    }
-  }
+  if (opts.extension) params.extension = opts.extension
+  if (opts.startDate) params.startDate = opts.startDate
+  if (opts.endDate) params.endDate = opts.endDate
+  if (opts.status) params.status = opts.status
 
   const { data: json } = await axios.get<{ success: boolean; data: CallScheduleRecord[]; total: number }>(
     BASE_URL,
