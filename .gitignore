@@ -32,3 +32,6 @@ apps/backend/*.env
 
 # sql
 *.sql
+
+# SQLite database files
+apps/backend/data/

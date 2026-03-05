@@ -17,6 +17,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import dayjs, { Dayjs } from 'dayjs'
 
 export type CallScheduleFormData = {
+  id?: string
   extension: string
   date: string
   retryInterval: string

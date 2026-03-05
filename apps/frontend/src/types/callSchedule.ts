@@ -8,6 +8,8 @@ export interface CallScheduleRecord {
   notes?: string // 備註
   notificationContent: string // 通知內容
   retryInterval: string // 重試間隔，單位分鐘
+  maxRetries?: string // 最多重試次數
+  createdAt?: string // 建立時間 (ISO string)
 }
 
 export interface CallScheduleFilters {

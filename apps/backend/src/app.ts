@@ -15,8 +15,13 @@ import { broadcastAllProjects, broadcastError } from './components/broadcast';
 import { ProjectManager } from './class/projectManager';
 import { CallListManager } from './class/callListManager';
 
+// FIAS 相關
 import fiasHandler from './components/fiasHandler';
 import { createServer as createFiasServer } from './util/fias';
+
+// CallSchedule 相關
+import callScheduleRouter from './routes/callSchedule';
+import { initDatabase } from './services/database';
 
 // Load environment variables
 dotenv.config();
@@ -34,6 +39,7 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
 // Mount API routes
 app.use('/api/bonsale', bonsaleRouter);
+app.use('/api/call-schedule', callScheduleRouter);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -268,7 +274,8 @@ httpServer.listen(PORT, async () => {
   try {
     // 初始化 Redis 連接
     await initRedis();
-    
+    // 初始化 SQLite 資料庫
+    await initDatabase();
     logWithTimestamp({ isForce: true }, `🚀 Server is running on port ${PORT}`);
     logWithTimestamp({ isForce: true }, `🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     logWithTimestamp({ isForce: true }, `🔌 WebSocket server is running on port ${PORT}`);
