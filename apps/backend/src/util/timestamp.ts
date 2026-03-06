@@ -4,7 +4,7 @@ export function getTaiwanTimestamp() {
 }
 
 // 檢查是否為開發環境
-const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === undefined;
+const isFullLog: boolean = (process.env.IS_FULL_LOG ?? 'true') === 'true';  
 
 export function logWithTimestamp(...args: unknown[]): void;
 export function logWithTimestamp(options: { isForce: boolean }, ...args: unknown[]): void;
@@ -20,7 +20,7 @@ export function logWithTimestamp(optionsOrFirstArg: unknown | { isForce: boolean
     actualArgs = [optionsOrFirstArg, ...args];
   }
 
-  if (!isDevelopment && !isForce) return;
+  if (!isFullLog && !isForce) return;
   const now = getTaiwanTimestamp();
   console.log(`[${now}]`, ...actualArgs);
 }
@@ -39,7 +39,7 @@ export function warnWithTimestamp(optionsOrFirstArg: unknown | { isForce: boolea
     actualArgs = [optionsOrFirstArg, ...args];
   }
 
-  if (!isDevelopment && !isForce) return;
+  if (!isFullLog && !isForce) return;
   const now = getTaiwanTimestamp();
   console.warn(`[${now}]`, ...actualArgs);
 }
@@ -58,7 +58,7 @@ export function errorWithTimestamp(optionsOrFirstArg: unknown | { isForce: boole
     actualArgs = [optionsOrFirstArg, ...args];
   }
 
-  if (!isDevelopment && !isForce) return;
+  if (!isFullLog && !isForce) return;
   const now = getTaiwanTimestamp();
   console.error(`[${now}]`, ...actualArgs);
 }

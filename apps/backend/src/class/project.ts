@@ -9,12 +9,20 @@ import { broadcastAllProjects } from '../components/broadcast';
 import { WebSocketManager } from './webSocketManager';
 import { TokenManager } from './tokenManager';
 import { CallListManager } from './callListManager';
-import { getOutbound, updateCallStatus, updateDialUpdate, updateVisitRecord, updateBonsaleProjectAutoDialExecute } from '../services/api/bonsale';
+import {
+  getOutbound,
+  updateCallStatus,
+  updateDialUpdate,
+  updateVisitRecord,
+  updateBonsaleProjectAutoDialExecute,
+  getBonsaleCompanySys
+} from '../services/api/bonsale';
 import { getUsers } from '../services/api/xApi';
 import { Outbound } from '../types/bonsale/getOutbound';
 import { Participant } from '@/types/3CX/callControl';
 import { post9000Dummy, post9000 } from '../services/api/insertOverdueMessageForAi';
 import { isTodayInSchedule } from '../util/iCalendar';
+import { formatInTimeZone } from 'date-fns-tz'
 
 dotenv.config();
 
@@ -907,8 +915,6 @@ export default class Project {
 
     // 檢查是否有 recurrence 排程
     if (this.recurrence) {
-      // TODO 跟 Victor 確認時區問題 決定前端要 UTC - 8
-      // 所以我這邊就不用轉換 
       const isInSchedule = isTodayInSchedule(this.recurrence);
       if (!isInSchedule) {
         warnWithTimestamp(`今天不在 recurrence 排程內，跳過外撥`);
@@ -919,9 +925,21 @@ export default class Project {
 
     // 檢查是否有 callRestriction 限制撥打時間
     if (this.callRestriction && this.callRestriction.length > 0) {
-      // callRestriction 的時間格式是 UTC+0，直接使用 UTC 時間比較
-      const now = new Date();
-      const currentTimeInMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+      // callRestriction 的時間格式是 Bonsale 公司時區，需要轉換時區
+      let companyTimeZone = 'Asia/Taipei';
+      const bonsaleCompanySys = await getBonsaleCompanySys();
+      if (!bonsaleCompanySys.success) {
+        warnWithTimestamp(`無法獲取公司系統時區，跳過外撥`);
+        this.setWarning('無法獲取公司系統時區，預設時區 Asia/Taipei');
+      } else {
+        companyTimeZone = bonsaleCompanySys.data.timezoneIANA || 'Asia/Taipei';
+      }
+      logWithTimestamp(`公司系統時區: ${companyTimeZone}`);
+
+      const [currentHour, currentMinute] = formatInTimeZone(new Date(), companyTimeZone, 'HH:mm')
+        .split(':')
+        .map(Number);
+      const currentTimeInMinutes = currentHour * 60 + currentMinute;
 
       // 檢查當前時間是否在任何一個限制時間範圍內
       const isInRestrictedTime = this.callRestriction.some(restriction => {

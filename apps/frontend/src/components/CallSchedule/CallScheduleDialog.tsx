@@ -17,8 +17,8 @@ import {
 } from '@mui/material'
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
-import dayjs, { Dayjs } from 'dayjs'
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
+import { format, parse, isValid } from 'date-fns'
 
 // ── Zod schema ──────────────────────────────────────────────
 const callScheduleSchema = z.object({
@@ -37,7 +37,7 @@ export type CallScheduleFormData = z.infer<typeof callScheduleSchema>
 // ── default values ───────────────────────────────────────────
 const defaultValues: CallScheduleFormData = {
   extension: '',
-  date: dayjs().format('YYYY/MM/DD HH:mm'),
+  date: format(new Date(), 'yyyy/MM/dd HH:mm'),
   retryInterval: '5',
   maxRetries: '3',
   notificationContent: '標準叫醒服務',
@@ -151,14 +151,17 @@ export function CallScheduleDialog({
                 name="date"
                 control={control}
                 render={({ field }) => (
-                  <LocalizationProvider dateAdapter={AdapterDayjs}>
+                  <LocalizationProvider dateAdapter={AdapterDateFns}>
                     <DateTimePicker
                       label="呼叫日期時間"
-                      value={dayjs(field.value, 'YYYY/MM/DD HH:mm')}
-                      onChange={(newValue: Dayjs | null) => {
-                        field.onChange(newValue ? newValue.format('YYYY/MM/DD HH:mm') : '')
+                      value={(() => {
+                        const parsed = parse(field.value, 'yyyy/MM/dd HH:mm', new Date())
+                        return isValid(parsed) ? parsed : null
+                      })()}
+                      onChange={(newValue: Date | null) => {
+                        field.onChange(newValue && isValid(newValue) ? format(newValue, 'yyyy/MM/dd HH:mm') : '')
                       }}
-                      format="YYYY/MM/DD HH:mm"
+                      format="yyyy/MM/dd HH:mm"
                       sx={{ width: '100%' }}
                       slotProps={{
                         textField: {

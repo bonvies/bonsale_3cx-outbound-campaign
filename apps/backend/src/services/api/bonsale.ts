@@ -191,6 +191,25 @@ async function updateBonsaleConfig(
   }
 }
 
+// 取的 Bonsale 系統時間
+async function getBonsaleCompanySys() {
+  try {
+    const response = await axiosBonsaleInstance.get(`${host}/company`);
+    console.log('Bonsale Company Sys:', response.data);
+    return { success: true, data: response.data }; // 返回成功
+  } catch (error: unknown) {
+    const axiosError = error as AxiosError;
+    console.error('Error getBonsaleCompanySys request:', axiosError.message);
+    return { 
+      success: false, 
+      error: {
+        errorCode: axiosError.response?.status?.toString() || '500',
+        error: `Error getBonsaleCompanySys request: ${axiosError.message}`
+      }
+    };
+  }
+}
+
 export {
   getOutbound,
   getBonsaleConfig,
@@ -198,5 +217,6 @@ export {
   updateCallStatus,
   updateBonsaleProjectAutoDialExecute,
   updateDialUpdate,
-  updateVisitRecord
+  updateVisitRecord,
+  getBonsaleCompanySys
 };

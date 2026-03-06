@@ -1,9 +1,8 @@
 import { Box, TextField, MenuItem, Button, Grid, Select, FormControl, InputLabel } from '@mui/material'
 import { DateTimePicker } from '@mui/x-date-pickers'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
 import { renderTimeViewClock } from '@mui/x-date-pickers'
-import dayjs, { type Dayjs } from 'dayjs'
 import type { CallScheduleFilters as FilterType } from '../../types/callSchedule'
 
 interface CallScheduleFiltersProps {
@@ -19,12 +18,12 @@ export function CallScheduleFilters({
   onClear,
   onSearch,
 }: CallScheduleFiltersProps) {
-  const handleStartDateChange = (newValue: Dayjs | null) => {
-    onFiltersChange({ ...filters, startDate: newValue?.toDate() || null })
+  const handleStartDateChange = (newValue: Date | null) => {
+    onFiltersChange({ ...filters, startDate: newValue || null })
   }
 
-  const handleEndDateChange = (newValue: Dayjs | null) => {
-    onFiltersChange({ ...filters, endDate: newValue?.toDate() || null })
+  const handleEndDateChange = (newValue: Date | null) => {
+    onFiltersChange({ ...filters, endDate: newValue || null })
   }
 
   const handleStatusChange = (value: string | string[]) => {
@@ -48,12 +47,12 @@ export function CallScheduleFilters({
     >
       <Grid container spacing={2} sx={{ mb: 2 }}>
         <Grid size={3}>
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <LocalizationProvider dateAdapter={AdapterDateFns}>
             <DateTimePicker
               label="建立時間（起）"
-              value={filters.startDate ? dayjs(filters.startDate) : null}
+              value={filters.startDate ?? null}
               onChange={handleStartDateChange}
-              format='YYYY/MM/DD HH:mm'
+              format='yyyy/MM/dd HH:mm'
               views={['year', 'month', 'day', 'hours', 'minutes']}
               ampm={false}
               viewRenderers={{
@@ -72,12 +71,12 @@ export function CallScheduleFilters({
         </Grid>
 
         <Grid size={3}>
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <LocalizationProvider dateAdapter={AdapterDateFns}>
             <DateTimePicker
               label="建立時間（訖）"
-              value={filters.endDate ? dayjs(filters.endDate) : null}
+              value={filters.endDate ?? null}
               onChange={handleEndDateChange}
-              format='YYYY/MM/DD HH:mm'
+              format='yyyy/MM/dd HH:mm'
               views={['year', 'month', 'day', 'hours', 'minutes']}
               ampm={false}
               viewRenderers={{

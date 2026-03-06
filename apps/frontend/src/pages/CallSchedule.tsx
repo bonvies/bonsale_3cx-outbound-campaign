@@ -21,7 +21,7 @@ import {
   InfoOutlined,
   Refresh,
 } from '@mui/icons-material'
-import dayjs from 'dayjs'
+import { format } from 'date-fns'
 import type { CallScheduleFilters as FilterType } from '../types/callSchedule'
 import { CallScheduleDialog, type CallScheduleFormData } from '../components/CallSchedule/CallScheduleDialog'
 import { CallScheduleFilters } from '../components/CallSchedule/CallScheduleFilters'
@@ -70,8 +70,8 @@ export default function CallSchedule() {
       sort: prev.sort,
       order: prev.order,
       ...(filters.extension.trim() && { extension: filters.extension.trim() }),
-      ...(filters.startDate && { startDate: dayjs(filters.startDate).format('YYYY/MM/DD HH:mm') }),
-      ...(filters.endDate && { endDate: dayjs(filters.endDate).format('YYYY/MM/DD HH:mm') }),
+      ...(filters.startDate && { startDate: format(new Date(filters.startDate), 'yyyy/MM/dd HH:mm') }),
+      ...(filters.endDate && { endDate: format(new Date(filters.endDate), 'yyyy/MM/dd HH:mm') }),
       ...(!filters.status.includes('全部') && { status: filters.status.join(',') }),
     }))
   }
