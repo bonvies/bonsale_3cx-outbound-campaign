@@ -34,9 +34,7 @@ export function DeleteConfirmDialog({ trigger, onConfirm }: DeleteConfirmDialogP
       {trigger(handleOpen)}
 
       <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
-        <DialogTitle>
-          <Typography variant="h6">確認刪除</Typography>
-        </DialogTitle>
+        <DialogTitle>確認刪除</DialogTitle>
 
         <DialogContent>
           <Typography variant="body1">

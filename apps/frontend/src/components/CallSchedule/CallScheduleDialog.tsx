@@ -90,11 +90,9 @@ export function CallScheduleDialog({
     <>
       {trigger && trigger(handleOpen)}
 
-      <Dialog open={open} onClose={handleClose} maxWidth={mode === 'info' ? 'sm' : 'xs'} fullWidth>
+      <Dialog open={open} onClose={handleClose} maxWidth='sm' fullWidth>
         <DialogTitle>
-          <Typography variant="h6">
-            {mode === 'add' ? '新增排程通話' : mode === 'edit' ? '編輯排程通話' : '自動語音通知明細'}
-          </Typography>
+          {mode === 'add' ? '新增排程通話' : mode === 'edit' ? '編輯排程通話' : '自動語音通知明細'}
         </DialogTitle>
 
         <DialogContent sx={{ pb: 0 }}>
@@ -143,6 +141,7 @@ export function CallScheduleDialog({
                     label="分機"
                     error={!!errors.extension}
                     helperText={errors.extension?.message}
+                    required
                   />
                 )}
               />
@@ -163,6 +162,7 @@ export function CallScheduleDialog({
                       sx={{ width: '100%' }}
                       slotProps={{
                         textField: {
+                          required: true,
                           error: !!errors.date,
                           helperText: errors.date?.message,
                         },
@@ -184,6 +184,7 @@ export function CallScheduleDialog({
                     select
                     error={!!errors.retryInterval}
                     helperText={errors.retryInterval?.message}
+                    required
                   >
                     <MenuItem value="1">1 分鐘</MenuItem>
                     <MenuItem value="3">3 分鐘</MenuItem>
@@ -209,6 +210,7 @@ export function CallScheduleDialog({
                     select
                     error={!!errors.maxRetries}
                     helperText={errors.maxRetries?.message}
+                    required
                   >
                     <MenuItem value="1">1 次</MenuItem>
                     <MenuItem value="2">2 次</MenuItem>
@@ -230,6 +232,7 @@ export function CallScheduleDialog({
                     select
                     error={!!errors.notificationContent}
                     helperText={errors.notificationContent?.message}
+                    required
                   >
                     <MenuItem value="標準叫醒服務">標準叫醒服務</MenuItem>
                     <MenuItem value="會議提醒">會議提醒</MenuItem>
@@ -251,6 +254,7 @@ export function CallScheduleDialog({
                     select
                     error={!!errors.audioFile}
                     helperText={errors.audioFile?.message}
+                    required
                   >
                     <MenuItem value="預設鈴聲">預設鈴聲</MenuItem>
                     <MenuItem value="溫柔叫醒">溫柔叫醒</MenuItem>
