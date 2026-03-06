@@ -1,5 +1,6 @@
 import express, { Router, Request, Response } from 'express';
 import { randomUUID } from 'crypto';
+import { formatInTimeZone } from 'date-fns-tz';
 import { getDatabase } from '../services/database';
 import { getBonsaleCompanySys } from '../services/api/bonsale';
 
@@ -19,11 +20,12 @@ interface DbRow {
   createdAt: string;
 }
 
-function rowToRecord(row: DbRow) {
+function rowToRecord(row: DbRow, timezone = 'UTC') {
+  const localDate = formatInTimeZone(new Date(row.date), timezone, "yyyy-MM-dd'T'HH:mm:ss.SSSxxx");
   return {
     id: row.id,
     audioFile: row.audioFile,
-    date: row.date,
+    date: localDate,
     extension: row.extension,
     callStatus: row.callStatus,
     callRecord: row.callRecord ?? undefined,
@@ -84,9 +86,7 @@ router.get('/', async (req: Request, res: Response) => {
       params.push(`%${extension as string}%`);
     }
 
-    // TODO: bonsale 時區
-    const bonsaleCompanySys = await getBonsaleCompanySys();
-    console.log('Bonsale Company Sys:', bonsaleCompanySys); // --- IGNORE ---
+
 
     const countParams = [...params];
     const countResult = db.prepare(`SELECT COUNT(*) as count FROM call_schedules ${whereClause}`).get(...countParams) as { count: number };
@@ -99,7 +99,11 @@ router.get('/', async (req: Request, res: Response) => {
     const rows = db.prepare(
       `SELECT * FROM call_schedules ${whereClause} ORDER BY ${sortField} ${sortOrder} LIMIT ? OFFSET ?`
     ).all(...params) as DbRow[];
-    res.json({ success: true, data: rows.map(rowToRecord), total });
+
+    const bonsaleCompanySys = await getBonsaleCompanySys();
+    const timezone = bonsaleCompanySys?.data?.timezoneIANA ?? 'UTC';
+
+    res.json({ success: true, data: rows.map(row => rowToRecord(row, timezone)), total });
   } catch (error) {
     console.error('[CallSchedule] GET error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -107,7 +111,7 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // GET /api/call-schedule/:id
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', async (req: Request, res: Response) => {
   try {
     const db = getDatabase();
     const { id } = req.params;
@@ -116,8 +120,9 @@ router.get('/:id', (req: Request, res: Response) => {
       res.status(404).json({ success: false, message: 'Not found' });
       return;
     }
-    console.log('Fetched call schedule by ID:', row); // --- IGNORE ---
-    res.json({ success: true, data: rowToRecord(row) });
+    const bonsaleCompanySys = await getBonsaleCompanySys();
+    const timezone = bonsaleCompanySys?.data?.timezoneIANA ?? 'UTC';
+    res.json({ success: true, data: rowToRecord(row, timezone) });
   } catch (error) {
     console.error('[CallSchedule] GET /:id error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });

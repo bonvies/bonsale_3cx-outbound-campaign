@@ -21,7 +21,7 @@ import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
 import { format, parse, isValid } from 'date-fns'
-import { createCallSchedule, updateCallSchedule, fetchCallScheduleById } from '../../api/CallSchedule'
+import { createCallSchedule, updateCallSchedule, fetchCallScheduleById } from '../../api/callSchedule'
 
 // ── Zod schema ──────────────────────────────────────────────
 const callScheduleSchema = z.object({

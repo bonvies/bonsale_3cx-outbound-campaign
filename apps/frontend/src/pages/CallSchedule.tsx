@@ -22,6 +22,7 @@ import {
   Refresh,
 } from '@mui/icons-material'
 import { format } from 'date-fns'
+import { toZonedTime } from 'date-fns-tz'
 import type { CallScheduleFilters as FilterType } from '../types/callSchedule'
 import { CallScheduleDialog } from '../components/CallSchedule/CallScheduleDialog'
 import { CallScheduleInfoDialog } from '../components/CallSchedule/CallScheduleInfoDialog'
@@ -32,8 +33,16 @@ import {
   deleteCallSchedule,
   type FetchCallSchedulesParams,
 } from '../api/CallSchedule'
+import { fetchBonsaleCompany } from '../api/Bonsale'
 
 const PAGE_SIZE = 10
+
+function formatLocalDate(isoString: string, timezoneIANA: string): string {
+  console.log('Original ISO String:', isoString); // --- DEBUG ---
+  console.log('Timezone IANA:', timezoneIANA); // --- DEBUG ---
+  console.log('Parsed Date:', toZonedTime(new Date(isoString), timezoneIANA)); // --- DEBUG ---
+  return format(toZonedTime(new Date(isoString), timezoneIANA), 'yyyy/MM/dd HH:mm:ss')
+}
 
 const defaultFilters: FilterType = {
   startDate: null,
@@ -57,6 +66,10 @@ export default function CallSchedule() {
   })
 
   const { data, mutate } = useSWR(fetchParams, fetchCallSchedules)
+  const { data: bonsaleCompanySysData } = useSWR('bonsaleCompanySys', fetchBonsaleCompany) 
+  console.log('Bonsale Company Sys Data:', bonsaleCompanySysData) // --- DEBUG ---
+  const timezoneIANA = bonsaleCompanySysData?.timezoneIANA || 'UTC'
+
 
   const records = data?.data ?? []
   const totalCount = data?.total ?? 0
@@ -250,7 +263,7 @@ export default function CallSchedule() {
             ) : (
               records.map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell align='center'>{row.date}</TableCell>
+                  <TableCell align='center'>{formatLocalDate(row.date, timezoneIANA)}</TableCell>
                   <TableCell align='center'>{row.extension}</TableCell>
                   <TableCell align='center'>
                     <Chip

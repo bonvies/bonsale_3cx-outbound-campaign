@@ -286,4 +286,19 @@ router.put('/config/:configName', async function(req: Request, res: Response) {
   }
 });
 
+// Bonsale Company 取得公司資訊
+router.get('/company', async function(req: Request, res: Response) {
+  try {
+    // 發送 GET 請求到 Bonsale API
+    const response = await axiosBonsaleInstance.get(
+      `${host}/company`
+    );
+
+    // 回傳 Bonsale API 的回應
+    return res.status(200).send(response.data);
+  } catch (error: unknown) {
+    return handleError(error, 'GET /company', res);
+  }
+});
+
 export { router, clientWsWebHook };
