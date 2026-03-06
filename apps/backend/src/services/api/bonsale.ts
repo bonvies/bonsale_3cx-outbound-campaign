@@ -195,7 +195,6 @@ async function updateBonsaleConfig(
 async function getBonsaleCompanySys() {
   try {
     const response = await axiosBonsaleInstance.get(`${host}/company`);
-    console.log('Bonsale Company Sys:', response.data);
     return { success: true, data: response.data }; // 返回成功
   } catch (error: unknown) {
     const axiosError = error as AxiosError;

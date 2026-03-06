@@ -1,9 +1,11 @@
-import { type ReactNode, useEffect } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
+import useSWR from 'swr'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useState } from 'react'
 import {
+  Alert,
+  CircularProgress,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -11,14 +13,15 @@ import {
   Button,
   TextField,
   MenuItem,
-  Box,
   Stack,
   Typography,
 } from '@mui/material'
+import toast from 'react-hot-toast'
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
 import { format, parse, isValid } from 'date-fns'
+import { createCallSchedule, updateCallSchedule, fetchCallScheduleById } from '../../api/CallSchedule'
 
 // ── Zod schema ──────────────────────────────────────────────
 const callScheduleSchema = z.object({
@@ -47,43 +50,91 @@ const defaultValues: CallScheduleFormData = {
 
 // ── props ────────────────────────────────────────────────────
 type CallScheduleDialogProps = {
-  mode?: 'add' | 'edit' | 'info'
-  data?: CallScheduleFormData | null
+  mode?: 'add' | 'edit'
+  id?: string
   trigger?: (onClick: () => void) => ReactNode
-  onSubmit?: (data: CallScheduleFormData) => void
+  onSuccess?: () => void
 }
 
 export function CallScheduleDialog({
   mode = 'add',
-  data = null,
+  id,
   trigger,
-  onSubmit,
+  onSuccess,
 }: CallScheduleDialogProps) {
   const [open, setOpen] = useState(false)
 
-  const {
-    control,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm<CallScheduleFormData>({
+  const { data: fetchedData } = useSWR(
+    open && mode === 'edit' && id ? id : null,
+    fetchCallScheduleById,
+  )
+
+  const { control, handleSubmit, reset } = useForm<CallScheduleFormData>({
     resolver: zodResolver(callScheduleSchema),
     defaultValues,
   })
 
-  // 打開 dialog 時，edit/info mode 還原為當筆資料
   useEffect(() => {
-    if (open) {
-      reset((mode === 'edit' || mode === 'info') && data ? data : defaultValues)
+    if (!open) return
+    if (mode === 'edit' && fetchedData) {
+      reset({
+        id: fetchedData.id,
+        extension: fetchedData.extension,
+        date: fetchedData.date ? format(new Date(fetchedData.date), 'yyyy/MM/dd HH:mm') : '',
+        retryInterval: fetchedData.retryInterval,
+        maxRetries: fetchedData.maxRetries ?? '3',
+        notificationContent: fetchedData.notificationContent,
+        audioFile: fetchedData.audioFile,
+        notes: fetchedData.notes ?? '',
+      })
+    } else if (mode === 'add') {
+      reset(defaultValues)
     }
-  }, [open, mode, data, reset])
+  }, [open, mode, fetchedData, reset])
 
   const handleOpen = () => setOpen(true)
   const handleClose = () => setOpen(false)
 
-  const onValid = (formData: CallScheduleFormData) => {
-    onSubmit?.(formData)
-    setOpen(false)
+  const handleSubmitData = () => {
+    handleSubmit(async (formData) => {
+      const loadingToast = toast.custom(
+        <Alert icon={false} severity="info">
+          <Stack direction="row" alignItems="center" spacing={2}>
+            <CircularProgress size={20} />
+            <Typography>{mode === 'edit' ? '更新中...' : '新增中...'}</Typography>
+          </Stack>
+        </Alert>,
+        { duration: Infinity },
+      )
+      try {
+        console.log('[CallScheduleDialog] submit data:', formData)
+        const payload = { ...formData, date: new Date(formData.date).toISOString() }
+        if (mode === 'edit' && formData.id) {
+          await updateCallSchedule(formData.id, payload)
+        } else {
+          await createCallSchedule(payload)
+        }
+        toast.custom(
+          <Alert severity="success" variant="filled">
+            {mode === 'edit' ? '更新成功' : '新增成功'}
+          </Alert>,
+        )
+        onSuccess?.()
+        setOpen(false)
+      } catch (err) {
+        console.error('[CallScheduleDialog] submit error:', err)
+        toast.custom(
+          t => (
+            <Alert severity="error" onClose={() => toast.remove(t.id)}>
+              {mode === 'edit' ? '更新失敗，請稍後再試' : '新增失敗，請稍後再試'}
+            </Alert>
+          ),
+          { duration: Infinity },
+        )
+      } finally {
+        toast.remove(loadingToast)
+      }
+    })()
   }
 
   return (
@@ -92,216 +143,188 @@ export function CallScheduleDialog({
 
       <Dialog open={open} onClose={handleClose} maxWidth='sm' fullWidth>
         <DialogTitle>
-          {mode === 'add' ? '新增排程通話' : mode === 'edit' ? '編輯排程通話' : '自動語音通知明細'}
+          {mode === 'add' ? '新增排程通話' : '編輯排程通話'}
         </DialogTitle>
 
         <DialogContent sx={{ pb: 0 }}>
-          {mode === 'info' ? (
-            <Box sx={{ px: 2 }}>
-              <Stack
-                direction="row"
-                spacing={2}
-                alignItems="center"
-                sx={{ py: 2, borderBottom: '1px solid', borderColor: 'divider' }}
-              >
-                <Typography variant='h5' flex='1' color="text.secondary" sx={{ mb: 3 }}>
-                  呼叫詳情
-                </Typography>
-              </Stack>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            {/* 分機 */}
+            <Controller
+              name="extension"
+              control={control}
+              render={({ field: { value, onChange, ref }, fieldState: { error } }) => (
+                <TextField
+                  value={value}
+                  onChange={onChange}
+                  inputRef={ref}
+                  fullWidth
+                  label="分機"
+                  error={!!error}
+                  helperText={error?.message}
+                  required
+                />
+              )}
+            />
 
-              {[
-                { label: '日期／時間', value: data?.date },
-                { label: '分機號', value: data?.extension },
-                { label: '撥號狀態', value: '失敗' },
-                { label: '撥號紀錄', value: '系統錯誤，無法完成撥號' },
-                { label: '備註', value: data?.notes || '-' },
-              ].map(({ label, value }, i, arr) => (
-                <Stack
-                  key={label}
-                  direction="row"
-                  spacing={2}
-                  alignItems="center"
-                  sx={{ p: 2, ...(i < arr.length - 1 && { borderBottom: '1px solid', borderColor: 'divider' }) }}
+            {/* 日期時間 */}
+            <Controller
+              name="date"
+              control={control}
+              render={({ field: { value, onChange }, fieldState: { error } }) => (
+                <LocalizationProvider dateAdapter={AdapterDateFns}>
+                  <DateTimePicker
+                    label="呼叫日期時間"
+                    value={(() => {
+                      const parsed = parse(value, 'yyyy/MM/dd HH:mm', new Date())
+                      return isValid(parsed) ? parsed : null
+                    })()}
+                    onChange={(newValue: Date | null) => {
+                      onChange(newValue && isValid(newValue) ? format(newValue, 'yyyy/MM/dd HH:mm') : '')
+                    }}
+                    format="yyyy/MM/dd HH:mm"
+                    sx={{ width: '100%' }}
+                    slotProps={{
+                      textField: {
+                        required: true,
+                        error: !!error,
+                        helperText: error?.message,
+                      },
+                    }}
+                  />
+                </LocalizationProvider>
+              )}
+            />
+
+            {/* 重試間隔 */}
+            <Controller
+              name="retryInterval"
+              control={control}
+              render={({ field: { value, onChange, ref }, fieldState: { error } }) => (
+                <TextField
+                  value={value}
+                  onChange={onChange}
+                  inputRef={ref}
+                  fullWidth
+                  label="重試間隔 (分鐘)"
+                  select
+                  error={!!error}
+                  helperText={error?.message}
+                  required
                 >
-                  <Typography variant="body1" sx={{ minWidth: 120 }}>{label}</Typography>
-                  <Typography variant="body1">{value}</Typography>
-                </Stack>
-              ))}
-            </Box>
-          ) : (
-            <Stack spacing={3} sx={{ mt: 1 }}>
-              {/* 分機 */}
-              <Controller
-                name="extension"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="分機"
-                    error={!!errors.extension}
-                    helperText={errors.extension?.message}
-                    required
-                  />
-                )}
-              />
+                  <MenuItem value="1">1 分鐘</MenuItem>
+                  <MenuItem value="3">3 分鐘</MenuItem>
+                  <MenuItem value="5">5 分鐘</MenuItem>
+                  <MenuItem value="10">10 分鐘</MenuItem>
+                </TextField>
+              )}
+            />
 
-              {/* 日期時間 */}
-              <Controller
-                name="date"
-                control={control}
-                render={({ field }) => (
-                  <LocalizationProvider dateAdapter={AdapterDateFns}>
-                    <DateTimePicker
-                      label="呼叫日期時間"
-                      value={(() => {
-                        const parsed = parse(field.value, 'yyyy/MM/dd HH:mm', new Date())
-                        return isValid(parsed) ? parsed : null
-                      })()}
-                      onChange={(newValue: Date | null) => {
-                        field.onChange(newValue && isValid(newValue) ? format(newValue, 'yyyy/MM/dd HH:mm') : '')
-                      }}
-                      format="yyyy/MM/dd HH:mm"
-                      sx={{ width: '100%' }}
-                      slotProps={{
-                        textField: {
-                          required: true,
-                          error: !!errors.date,
-                          helperText: errors.date?.message,
-                        },
-                      }}
-                    />
-                  </LocalizationProvider>
-                )}
-              />
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              重呼設定
+            </Typography>
 
-              {/* 重試間隔 */}
-              <Controller
-                name="retryInterval"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="重試間隔 (分鐘)"
-                    select
-                    error={!!errors.retryInterval}
-                    helperText={errors.retryInterval?.message}
-                    required
-                  >
-                    <MenuItem value="1">1 分鐘</MenuItem>
-                    <MenuItem value="3">3 分鐘</MenuItem>
-                    <MenuItem value="5">5 分鐘</MenuItem>
-                    <MenuItem value="10">10 分鐘</MenuItem>
-                  </TextField>
-                )}
-              />
+            {/* 最多重試次數 */}
+            <Controller
+              name="maxRetries"
+              control={control}
+              render={({ field: { value, onChange, ref }, fieldState: { error } }) => (
+                <TextField
+                  value={value}
+                  onChange={onChange}
+                  inputRef={ref}
+                  fullWidth
+                  label="最多重試次數"
+                  select
+                  error={!!error}
+                  helperText={error?.message}
+                  required
+                >
+                  <MenuItem value="1">1 次</MenuItem>
+                  <MenuItem value="2">2 次</MenuItem>
+                  <MenuItem value="3">3 次</MenuItem>
+                  <MenuItem value="5">5 次</MenuItem>
+                </TextField>
+              )}
+            />
 
-              <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                重呼設定
-              </Typography>
+            {/* 通知內容 */}
+            <Controller
+              name="notificationContent"
+              control={control}
+              render={({ field: { value, onChange, ref }, fieldState: { error } }) => (
+                <TextField
+                  value={value}
+                  onChange={onChange}
+                  inputRef={ref}
+                  fullWidth
+                  label="通知內容"
+                  select
+                  error={!!error}
+                  helperText={error?.message}
+                  required
+                >
+                  <MenuItem value="標準叫醒服務">標準叫醒服務</MenuItem>
+                  <MenuItem value="會議提醒">會議提醒</MenuItem>
+                  <MenuItem value="航班提醒">航班提醒</MenuItem>
+                  <MenuItem value="自訂訊息">自訂訊息</MenuItem>
+                </TextField>
+              )}
+            />
 
-              {/* 最多重試次數 */}
-              <Controller
-                name="maxRetries"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="最多重試次數"
-                    select
-                    error={!!errors.maxRetries}
-                    helperText={errors.maxRetries?.message}
-                    required
-                  >
-                    <MenuItem value="1">1 次</MenuItem>
-                    <MenuItem value="2">2 次</MenuItem>
-                    <MenuItem value="3">3 次</MenuItem>
-                    <MenuItem value="5">5 次</MenuItem>
-                  </TextField>
-                )}
-              />
+            {/* 音檔名稱 */}
+            <Controller
+              name="audioFile"
+              control={control}
+              render={({ field: { value, onChange, ref }, fieldState: { error } }) => (
+                <TextField
+                  value={value}
+                  onChange={onChange}
+                  inputRef={ref}
+                  fullWidth
+                  label="音檔名稱"
+                  select
+                  error={!!error}
+                  helperText={error?.message}
+                  required
+                >
+                  <MenuItem value="預設鈴聲">預設鈴聲</MenuItem>
+                  <MenuItem value="溫柔叫醒">溫柔叫醒</MenuItem>
+                  <MenuItem value="緊急鈴聲">緊急鈴聲</MenuItem>
+                </TextField>
+              )}
+            />
 
-              {/* 通知內容 */}
-              <Controller
-                name="notificationContent"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="通知內容"
-                    select
-                    error={!!errors.notificationContent}
-                    helperText={errors.notificationContent?.message}
-                    required
-                  >
-                    <MenuItem value="標準叫醒服務">標準叫醒服務</MenuItem>
-                    <MenuItem value="會議提醒">會議提醒</MenuItem>
-                    <MenuItem value="航班提醒">航班提醒</MenuItem>
-                    <MenuItem value="自訂訊息">自訂訊息</MenuItem>
-                  </TextField>
-                )}
-              />
-
-              {/* 音檔名稱 */}
-              <Controller
-                name="audioFile"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="音檔名稱"
-                    select
-                    error={!!errors.audioFile}
-                    helperText={errors.audioFile?.message}
-                    required
-                  >
-                    <MenuItem value="預設鈴聲">預設鈴聲</MenuItem>
-                    <MenuItem value="溫柔叫醒">溫柔叫醒</MenuItem>
-                    <MenuItem value="緊急鈴聲">緊急鈴聲</MenuItem>
-                  </TextField>
-                )}
-              />
-
-              {/* 備註 */}
-              <Controller
-                name="notes"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="備註"
-                    multiline
-                    rows={3}
-                    placeholder="例如：會議、趕飛機等"
-                    error={!!errors.notes}
-                    helperText={errors.notes?.message}
-                  />
-                )}
-              />
-            </Stack>
-          )}
+            {/* 備註 */}
+            <Controller
+              name="notes"
+              control={control}
+              render={({ field: { value, onChange, ref }, fieldState: { error } }) => (
+                <TextField
+                  value={value}
+                  onChange={onChange}
+                  inputRef={ref}
+                  fullWidth
+                  label="備註"
+                  multiline
+                  rows={3}
+                  placeholder="例如：會議、趕飛機等"
+                  error={!!error}
+                  helperText={error?.message}
+                />
+              )}
+            />
+          </Stack>
         </DialogContent>
 
         <DialogActions sx={{ px: 3, py: 2 }}>
-          {mode === 'info' ? (
-            <Button onClick={handleClose} variant="contained" color="primary">
-              確定
+          <>
+            <Button onClick={handleClose} variant="outlined" color="inherit">
+              取消
             </Button>
-          ) : (
-            <>
-              <Button onClick={handleClose} variant="outlined" color="inherit">
-                取消
-              </Button>
-              <Button onClick={handleSubmit(onValid)} variant="contained" color="primary">
-                {mode === 'add' ? '新增' : '儲存'}
-              </Button>
-            </>
-          )}
+            <Button onClick={handleSubmitData} variant="contained" color="primary">
+              {mode === 'add' ? '新增' : '儲存'}
+            </Button>
+          </>
         </DialogActions>
       </Dialog>
     </>

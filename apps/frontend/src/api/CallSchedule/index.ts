@@ -48,6 +48,13 @@ export async function fetchCallSchedules(opts: FetchCallSchedulesParams): Promis
   return { data: json.data, total: json.total }
 }
 
+export async function fetchCallScheduleById(id: string): Promise<CallScheduleRecord> {
+  const { data: json } = await axios.get<{ success: boolean; data: CallScheduleRecord }>(
+    `${BASE_URL}/${id}`
+  )
+  return json.data
+}
+
 export async function createCallSchedule(form: CallScheduleFormData): Promise<void> {
   await axios.post(BASE_URL, {
     audioFile: form.audioFile,

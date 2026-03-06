@@ -23,13 +23,12 @@ import {
 } from '@mui/icons-material'
 import { format } from 'date-fns'
 import type { CallScheduleFilters as FilterType } from '../types/callSchedule'
-import { CallScheduleDialog, type CallScheduleFormData } from '../components/CallSchedule/CallScheduleDialog'
+import { CallScheduleDialog } from '../components/CallSchedule/CallScheduleDialog'
+import { CallScheduleInfoDialog } from '../components/CallSchedule/CallScheduleInfoDialog'
 import { CallScheduleFilters } from '../components/CallSchedule/CallScheduleFilters'
 import { DeleteConfirmDialog } from '../components/CallSchedule/DeleteConfirmDialog'
 import {
   fetchCallSchedules,
-  createCallSchedule,
-  updateCallSchedule,
   deleteCallSchedule,
   type FetchCallSchedulesParams,
 } from '../api/CallSchedule'
@@ -95,25 +94,6 @@ export default function CallSchedule() {
     setFetchParams(prev => ({ ...prev, page: value }))
   }
 
-  const handleAddSchedule = async (data: CallScheduleFormData) => {
-    try {
-      await createCallSchedule(data)
-      mutate()
-    } catch (err) {
-      console.error('Failed to create call schedule:', err)
-    }
-  }
-
-  const handleEditSchedule = async (data: CallScheduleFormData) => {
-    if (!data.id) return
-    try {
-      await updateCallSchedule(data.id, data)
-      mutate()
-    } catch (err) {
-      console.error('Failed to update call schedule:', err)
-    }
-  }
-
   const handleDeleteSchedule = async (id: string) => {
     try {
       await deleteCallSchedule(id)
@@ -167,7 +147,7 @@ export default function CallSchedule() {
       >
         <CallScheduleDialog
           mode="add"
-          onSubmit={handleAddSchedule}
+          onSuccess={mutate}
           trigger={(onClick) => (
             <Button
               variant="contained"
@@ -285,35 +265,16 @@ export default function CallSchedule() {
                     <Stack direction='row' justifyContent='center'>
                       <CallScheduleDialog
                         mode="edit"
-                        data={{
-                          id: row.id,
-                          extension: row.extension,
-                          date: row.date,
-                          retryInterval: row.retryInterval,
-                          maxRetries: row.maxRetries ?? '3',
-                          notificationContent: row.notificationContent,
-                          audioFile: row.audioFile,
-                          notes: row.notes || '',
-                        }}
-                        onSubmit={handleEditSchedule}
+                        id={row.id}
+                        onSuccess={mutate}
                         trigger={(onClick) => (
                           <IconButton onClick={onClick}>
                             <Edit />
                           </IconButton>
                         )}
                       />
-                      <CallScheduleDialog
-                        mode="info"
-                        data={{
-                          id: row.id,
-                          extension: row.extension,
-                          date: row.date,
-                          retryInterval: row.retryInterval,
-                          maxRetries: row.maxRetries ?? '3',
-                          notificationContent: row.notificationContent,
-                          audioFile: row.audioFile,
-                          notes: row.notes || '',
-                        }}
+                      <CallScheduleInfoDialog
+                        id={row.id}
                         trigger={(onClick) => (
                           <IconButton onClick={onClick}>
                             <InfoOutlined />

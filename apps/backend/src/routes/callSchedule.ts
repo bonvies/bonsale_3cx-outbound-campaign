@@ -1,59 +1,66 @@
 import express, { Router, Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import { getDatabase } from '../services/database';
+import { getBonsaleCompanySys } from '../services/api/bonsale';
 
 const router: Router = express.Router();
 
 interface DbRow {
   id: string;
-  audio_file: string;
+  audioFile: string;
   date: string;
   extension: string;
-  call_status: string;
-  call_record: string | null;
+  callStatus: string;
+  callRecord: string | null;
   notes: string | null;
-  notification_content: string;
-  retry_interval: string;
-  max_retries: string;
-  created_at: string;
+  notificationContent: string;
+  retryInterval: string;
+  maxRetries: string;
+  createdAt: string;
 }
 
 function rowToRecord(row: DbRow) {
   return {
     id: row.id,
-    audioFile: row.audio_file,
+    audioFile: row.audioFile,
     date: row.date,
     extension: row.extension,
-    callStatus: row.call_status,
-    callRecord: row.call_record ?? undefined,
+    callStatus: row.callStatus,
+    callRecord: row.callRecord ?? undefined,
     notes: row.notes ?? undefined,
-    notificationContent: row.notification_content,
-    retryInterval: row.retry_interval,
-    maxRetries: row.max_retries,
-    createdAt: row.created_at,
+    notificationContent: row.notificationContent,
+    retryInterval: row.retryInterval,
+    maxRetries: row.maxRetries,
+    createdAt: row.createdAt,
   };
+}
+
+const UTC_ISO_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+
+function validateUtcDate(date: string): boolean {
+  return UTC_ISO_REGEX.test(date) && !isNaN(new Date(date).getTime());
 }
 
 const SORTABLE_FIELDS: Record<string, string> = {
   date: 'date',
-  created_at: 'created_at',
+  createdAt: 'createdAt',
   extension: 'extension',
-  call_status: 'call_status',
+  callStatus: 'callStatus',
 };
 
 // GET /api/call-schedule
-router.get('/', (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const db = getDatabase();
     const {
       startDate, endDate, status, extension,
       page = '1', limit = '10',
-      sort = 'created_at', order = 'desc',
+      sort = 'createdAt', order = 'desc',
     } = req.query;
 
-    const sortField = SORTABLE_FIELDS[sort as string] ?? 'created_at';
+    const sortField = SORTABLE_FIELDS[sort as string] ?? 'createdAt';
     const sortOrder = (order as string).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
-
+    
     let whereClause = 'WHERE 1=1';
     const params: (string | number)[] = [];
 
@@ -68,7 +75,7 @@ router.get('/', (req: Request, res: Response) => {
     if (status) {
       const statusList = (status as string).split(',').map(s => s.trim()).filter(Boolean);
       if (statusList.length > 0) {
-        whereClause += ` AND call_status IN (${statusList.map(() => '?').join(',')})`;
+        whereClause += ` AND callStatus IN (${statusList.map(() => '?').join(',')})`;
         params.push(...statusList);
       }
     }
@@ -76,6 +83,10 @@ router.get('/', (req: Request, res: Response) => {
       whereClause += ' AND extension LIKE ?';
       params.push(`%${extension as string}%`);
     }
+
+    // TODO: bonsale 時區
+    const bonsaleCompanySys = await getBonsaleCompanySys();
+    console.log('Bonsale Company Sys:', bonsaleCompanySys); // --- IGNORE ---
 
     const countParams = [...params];
     const countResult = db.prepare(`SELECT COUNT(*) as count FROM call_schedules ${whereClause}`).get(...countParams) as { count: number };
@@ -88,10 +99,27 @@ router.get('/', (req: Request, res: Response) => {
     const rows = db.prepare(
       `SELECT * FROM call_schedules ${whereClause} ORDER BY ${sortField} ${sortOrder} LIMIT ? OFFSET ?`
     ).all(...params) as DbRow[];
-
     res.json({ success: true, data: rows.map(rowToRecord), total });
   } catch (error) {
     console.error('[CallSchedule] GET error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// GET /api/call-schedule/:id
+router.get('/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDatabase();
+    const { id } = req.params;
+    const row = db.prepare('SELECT * FROM call_schedules WHERE id = ?').get(id) as DbRow | undefined;
+    if (!row) {
+      res.status(404).json({ success: false, message: 'Not found' });
+      return;
+    }
+    console.log('Fetched call schedule by ID:', row); // --- IGNORE ---
+    res.json({ success: true, data: rowToRecord(row) });
+  } catch (error) {
+    console.error('[CallSchedule] GET /:id error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
@@ -107,11 +135,16 @@ router.post('/', (req: Request, res: Response) => {
       return;
     }
 
+    if (!validateUtcDate(date)) {
+      res.status(400).json({ success: false, message: 'date must be a valid UTC ISO 8601 string (e.g. 2026-03-06T06:00:00.000Z)' });
+      return;
+    }
+
     const newId = randomUUID();
     const createdAt = new Date().toISOString();
     db.prepare(`
       INSERT INTO call_schedules
-        (id, audio_file, date, extension, call_status, call_record, notes, notification_content, retry_interval, max_retries, created_at)
+        (id, audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, maxRetries, createdAt)
       VALUES (?, ?, ?, ?, '排程中', NULL, ?, ?, ?, ?, ?)
     `).run(newId, audioFile, date, extension, notes, notificationContent, retryInterval, maxRetries, createdAt);
 
@@ -129,17 +162,22 @@ router.put('/:id', (req: Request, res: Response) => {
     const { id } = req.params;
     const { audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, maxRetries } = req.body;
 
+    if (date !== undefined && date !== null && !validateUtcDate(date)) {
+      res.status(400).json({ success: false, message: 'date must be a valid UTC ISO 8601 string (e.g. 2026-03-06T06:00:00.000Z)' });
+      return;
+    }
+
     db.prepare(`
       UPDATE call_schedules SET
-        audio_file           = COALESCE(?, audio_file),
+        audioFile           = COALESCE(?, audioFile),
         date                 = COALESCE(?, date),
         extension            = COALESCE(?, extension),
-        call_status          = COALESCE(?, call_status),
-        call_record          = COALESCE(?, call_record),
+        callStatus          = COALESCE(?, callStatus),
+        callRecord          = COALESCE(?, callRecord),
         notes                = COALESCE(?, notes),
-        notification_content = COALESCE(?, notification_content),
-        retry_interval       = COALESCE(?, retry_interval),
-        max_retries          = COALESCE(?, max_retries)
+        notificationContent = COALESCE(?, notificationContent),
+        retryInterval       = COALESCE(?, retryInterval),
+        maxRetries          = COALESCE(?, maxRetries)
       WHERE id = ?
     `).run(
       audioFile ?? null,

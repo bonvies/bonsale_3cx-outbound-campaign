@@ -17,16 +17,16 @@ export async function initDatabase(): Promise<void> {
   db.exec(`
     CREATE TABLE IF NOT EXISTS call_schedules (
       id                   TEXT PRIMARY KEY,
-      audio_file           TEXT NOT NULL,
+      audioFile           TEXT NOT NULL,
       date                 TEXT NOT NULL,
       extension            TEXT NOT NULL,
-      call_status          TEXT NOT NULL DEFAULT '排程中',
-      call_record          TEXT,
+      callStatus          TEXT NOT NULL DEFAULT '排程中',
+      callRecord          TEXT,
       notes                TEXT,
-      notification_content TEXT NOT NULL,
-      retry_interval       TEXT NOT NULL,
-      max_retries          TEXT NOT NULL DEFAULT '3',
-      created_at           TEXT NOT NULL
+      notificationContent TEXT NOT NULL,
+      retryInterval       TEXT NOT NULL,
+      maxRetries          TEXT NOT NULL DEFAULT '3',
+      createdAt           TEXT NOT NULL
     )
   `);
 

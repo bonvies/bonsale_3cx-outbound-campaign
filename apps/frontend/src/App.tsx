@@ -1,5 +1,6 @@
 import Router from "./router/Router.tsx";
 import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { Toaster } from 'react-hot-toast';
 import theme from './theme/theme.ts';
 import custom from "./theme/custom.ts";
 
@@ -19,6 +20,7 @@ function App() {
   return (
     <ThemeProvider theme={muiTheme}>
       <Router />
+      <Toaster position="top-center" />
     </ThemeProvider>
   )
 }
