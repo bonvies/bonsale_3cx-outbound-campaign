@@ -191,6 +191,7 @@ export function CallScheduleDialog({
                         helperText: error?.message,
                       },
                     }}
+                    ampm={false}
                   />
                 </LocalizationProvider>
               )}
