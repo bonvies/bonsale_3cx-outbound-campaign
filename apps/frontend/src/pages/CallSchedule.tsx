@@ -66,10 +66,8 @@ export default function CallSchedule() {
   })
 
   const { data, mutate } = useSWR(fetchParams, fetchCallSchedules)
-  const { data: bonsaleCompanySysData } = useSWR('bonsaleCompanySys', fetchBonsaleCompany) 
-  console.log('Bonsale Company Sys Data:', bonsaleCompanySysData) // --- DEBUG ---
+  const { data: bonsaleCompanySysData } = useSWR('bonsaleCompany', fetchBonsaleCompany)
   const timezoneIANA = bonsaleCompanySysData?.timezoneIANA || 'UTC'
-
 
   const records = data?.data ?? []
   const totalCount = data?.total ?? 0

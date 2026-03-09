@@ -11,7 +11,7 @@ const HTTP_HOST =
     ? `${api_protocol}://${hostname}:${port}`
     : `${api_protocol}://${domain}:${port}`
 
-const BASE_URL = `${HTTP_HOST}/api/call-schedule`
+export const BASE_URL = `${HTTP_HOST}/api/call-schedule`
 
 export interface FetchCallSchedulesParams {
   page: number

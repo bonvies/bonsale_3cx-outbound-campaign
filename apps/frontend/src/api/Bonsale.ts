@@ -9,7 +9,7 @@ const HTTP_HOST =
     ? `${api_protocol}://${hostname}:${port}`
     : `${api_protocol}://${domain}:${port}`
 
-const BASE_URL = `${HTTP_HOST}/api/bonsale`
+export const BASE_URL = `${HTTP_HOST}/api/bonsale`
 
 export type BonsaleCompanySys = {
   coyCode: number
@@ -33,8 +33,6 @@ export type BonsaleCompanySys = {
 }
 
 export async function fetchBonsaleCompany(): Promise<BonsaleCompanySys> {
-  const { data: json } = await axios.get<{ success: boolean; data: BonsaleCompanySys }>(
-    `${BASE_URL}/company`
-  )
-  return json.data
+  const { data } = await axios.get<BonsaleCompanySys>(`${BASE_URL}/company`)
+  return data
 }
