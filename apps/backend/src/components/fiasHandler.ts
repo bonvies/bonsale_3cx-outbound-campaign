@@ -19,7 +19,7 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       console.log(`TODO 已將預約資訊存入資料庫：RN=${msg.fields.RN}, TI=${msg.fields.TI}`);
 
       // 呼叫 API 撥打電話
-      // TODO : 這裡直接呼叫 mackeCall() 是為了測試，實際上你應該把它包在一個服務函式裡，並傳入必要參數（例如房間號碼）來撥打對應的電話
+      // TODO : 這裡直接呼叫 mackeCall() 是為了測試
       const toCall = await mackeCall('9038', '9037'); 
       console.log('撥打電話結果:', toCall);
 

@@ -3,7 +3,8 @@ import { randomUUID } from 'crypto';
 import { formatInTimeZone } from 'date-fns-tz';
 import { getDatabase } from '../services/database';
 import { getBonsaleCompanySys } from '../services/api/bonsale';
-
+import schedule from 'node-schedule'
+import { mackeCall } from '@/services/api/newRockApi';
 const router: Router = express.Router();
 
 interface DbRow {
@@ -147,11 +148,34 @@ router.post('/', (req: Request, res: Response) => {
 
     const newId = randomUUID();
     const createdAt = new Date().toISOString();
+
+    // 1. 先存放資料庫
     db.prepare(`
       INSERT INTO call_schedules
         (id, audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, maxRetries, createdAt)
       VALUES (?, ?, ?, ?, '排程中', NULL, ?, ?, ?, ?, ?)
     `).run(newId, audioFile, date, extension, notes, notificationContent, retryInterval, maxRetries, createdAt);
+
+    // 2. 再針對資料進行排程
+    const jobDate = new Date(date);
+    console.log(`[CallSchedule] Scheduling job for ID: ${newId} at ${jobDate.toISOString()}`);
+    schedule.scheduleJob(newId, jobDate, async () => {
+      console.log(`[CallSchedule] Executing scheduled job for ID: ${newId} at ${new Date().toISOString()}`);
+      try {
+        // 撥打電話
+        const toCall = await mackeCall('9038', '9037'); // TODO: 分機指定問題，這裡先寫死測試用，實際上你應該把它包在一個服務函式裡，並傳入必要參數（例如房間號碼）來撥打對應的電話
+        if (!toCall.success) {
+          console.error(`[CallSchedule] Call failed for ID: ${newId}`, toCall.error);
+        } else {
+          console.log(`[CallSchedule] Call successful for ID: ${newId}`);
+        }
+        db.prepare(`UPDATE call_schedules SET callStatus = '已完成' WHERE id = ?`).run(newId);
+        console.log(`[CallSchedule] Job completed, status updated to 已完成 for ID: ${newId}`);
+      } catch (err) {
+        console.error(`[CallSchedule] Failed to update status for ID: ${newId}`, err);
+        db.prepare(`UPDATE call_schedules SET callStatus = '錯誤' WHERE id = ?`).run(newId);
+      }
+    });
 
     res.json({ success: true, data: { id: newId } });
   } catch (error) {
@@ -161,23 +185,24 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // PUT /api/call-schedule/:id
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const db = getDatabase();
     const { id } = req.params;
-    const { audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, maxRetries } = req.body;
+    const db = getDatabase();
+    const { audioFile, date, extension, callRecord, notes, notificationContent, retryInterval, maxRetries } = req.body;
 
     if (date !== undefined && date !== null && !validateUtcDate(date)) {
       res.status(400).json({ success: false, message: 'date must be a valid UTC ISO 8601 string (e.g. 2026-03-06T06:00:00.000Z)' });
       return;
     }
 
+    // 1. 先更新資料庫
     db.prepare(`
       UPDATE call_schedules SET
         audioFile           = COALESCE(?, audioFile),
         date                 = COALESCE(?, date),
         extension            = COALESCE(?, extension),
-        callStatus          = COALESCE(?, callStatus),
+        callStatus          = '排程中',
         callRecord          = COALESCE(?, callRecord),
         notes                = COALESCE(?, notes),
         notificationContent = COALESCE(?, notificationContent),
@@ -188,7 +213,6 @@ router.put('/:id', (req: Request, res: Response) => {
       audioFile ?? null,
       date ?? null,
       extension ?? null,
-      callStatus ?? null,
       callRecord ?? null,
       notes ?? null,
       notificationContent ?? null,
@@ -196,6 +220,35 @@ router.put('/:id', (req: Request, res: Response) => {
       maxRetries ?? null,
       id
     );
+
+    // 2. 取消舊排程，用更新後的 date 重新安排
+    const existingJob = schedule.scheduledJobs[id];
+    if (existingJob) {
+      existingJob.cancel();
+      console.log(`[CallSchedule] Cancelled existing job for ID: ${id}`);
+    }
+    const updatedRow = db.prepare('SELECT date FROM call_schedules WHERE id = ?').get(id) as { date: string } | undefined;
+    if (updatedRow) {
+      const jobDate = new Date(updatedRow.date);
+      console.log(`[CallSchedule] Rescheduling job for ID: ${id} at ${jobDate.toISOString()}`);
+      schedule.scheduleJob(id, jobDate, async () => {
+        console.log(`[CallSchedule] Executing rescheduled job for ID: ${id} at ${new Date().toISOString()}`);
+        try {
+          // 撥打電話
+          const toCall = await mackeCall('9038', '9037'); // TODO: 分機指定問題，這裡先寫死測試用，實際上你應該把它包在一個服務函式裡，並傳入必要參數（例如房間號碼）來撥打對應的電話
+          if (!toCall.success) {
+            console.error(`[CallSchedule] Call failed for ID: ${id}`, toCall.error);
+          } else {
+            console.log(`[CallSchedule] Call successful for ID: ${id}`);
+          }
+          db.prepare(`UPDATE call_schedules SET callStatus = '已完成' WHERE id = ?`).run(id);
+          console.log(`[CallSchedule] Job completed, status updated to 已完成 for ID: ${id}`);
+        } catch (err) {
+          console.error(`[CallSchedule] Failed to update status for ID: ${id}`, err);
+          db.prepare(`UPDATE call_schedules SET callStatus = '錯誤' WHERE id = ?`).run(id);
+        }
+      });
+    }
 
     res.json({ success: true });
   } catch (error) {

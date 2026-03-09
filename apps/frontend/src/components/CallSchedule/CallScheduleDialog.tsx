@@ -21,7 +21,7 @@ import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
 import { format, parse, isValid } from 'date-fns'
-import { createCallSchedule, updateCallSchedule, fetchCallScheduleById } from '../../api/callSchedule'
+import { createCallSchedule, updateCallSchedule, fetchCallScheduleById } from '../../api/CallSchedule'
 
 // ── Zod schema ──────────────────────────────────────────────
 const callScheduleSchema = z.object({
@@ -182,6 +182,7 @@ export function CallScheduleDialog({
                       onChange(newValue && isValid(newValue) ? format(newValue, 'yyyy/MM/dd HH:mm') : '')
                     }}
                     format="yyyy/MM/dd HH:mm"
+                    timeSteps={{ minutes: 1 }}
                     sx={{ width: '100%' }}
                     slotProps={{
                       textField: {

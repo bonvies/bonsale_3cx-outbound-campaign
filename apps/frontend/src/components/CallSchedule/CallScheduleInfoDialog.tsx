@@ -11,7 +11,7 @@ import {
   Typography,
 } from '@mui/material'
 import { format } from 'date-fns'
-import { fetchCallScheduleById } from '../../api/callSchedule'
+import { fetchCallScheduleById } from '../../api/CallSchedule'
 
 type CallScheduleInfoDialogProps = {
   id?: string
