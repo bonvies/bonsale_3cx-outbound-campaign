@@ -66,6 +66,12 @@ WS_HOST_3CX=<3CX_WEBSOCKET_URL>
 HTTP_PORT=4020
 NODE_ENV=production
 
+# 是否啟用完整日誌輸出 (true/false)
+IS_FULL_LOG=false
+
+# 服務器重啟時是否自動恢復撥打任務 (true/false)
+AUTO_RECOVER_ON_RESTART=true
+
 # Bonsale API 連接
 BONSALE_HOST=<BONSALE_API_ENDPOINT>
 BONSALE_X_API_KEY=<YOUR_API_KEY>
@@ -74,8 +80,15 @@ BONSALE_X_API_SECRET=<YOUR_API_SECRET>
 # AI 自動外撥參數
 HTTP_HOST_MESSAGE_FOR_AI=<MESSAGE_SERVICE_URL>
 
-# 呼叫類型支援
+# 呼叫類型支援（Wqueue, Wextension, Wroutepoint）
 DEFAULT_SUPPORTED_CALL_TYPES=Wextension
+
+# 空閒檢查設定（啟用後當撥號名單太久沒撥號，系統自動嘗試恢復）
+IS_STARTIDLECHECK=true
+IDLE_CHECK_INTERVAL=30000
+MIN_IDLE_CHECK_INTERVAL=30000
+MAX_IDLE_CHECK_INTERVAL=300000
+IDLE_CHECK_BACKOFF_FACTOR=1.5
 
 # 3CX 管理員認證
 ADMIN_3CX_CLIENT_ID=<CLIENT_ID>
@@ -84,16 +97,6 @@ ADMIN_3CX_GRANT_TYPE=client_credentials
 
 # Redis 連接
 REDIS_URL=redis://redis:6379
-
-# 自動恢復設定
-AUTO_RECOVER_ON_RESTART=true
-
-# 空閒檢查設定（可選）
-IS_STARTIDLECHECK=false
-IDLE_CHECK_INTERVAL=30000
-MIN_IDLE_CHECK_INTERVAL=30000
-MAX_IDLE_CHECK_INTERVAL=300000
-IDLE_CHECK_BACKOFF_FACTOR=1.5
 ```
 
 ## 🚀 快速開始
@@ -105,7 +108,7 @@ IDLE_CHECK_BACKOFF_FACTOR=1.5
 pnpm install
 
 # 2. 建立 .env 檔案（參考上面的環境變數配置）
-cp .env.example .env
+cp apps/backend/.env.example apps/backend/.env
 # 編輯 .env 填入具體參數
 
 # 3. 啟動開發環境

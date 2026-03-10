@@ -3,7 +3,7 @@ export function getTaiwanTimestamp() {
   return new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
 }
 
-// 檢查是否為開發環境
+// 檢查是否要完整輸出日誌，預設為 true
 const isFullLog: boolean = (process.env.IS_FULL_LOG ?? 'true') === 'true';  
 
 export function logWithTimestamp(...args: unknown[]): void;
