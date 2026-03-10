@@ -269,7 +269,7 @@ httpServer.listen(PORT, async () => {
     logWithTimestamp({ isForce: true }, `🔌 WebSocket server is running on port ${PORT}`);
     logWithTimestamp({ isForce: true }, `🖥️ Bonsale WebHook WebSocket is available on port ${PORT}/api/bonsale/webhook-ws`);
     logWithTimestamp({ isForce: true }, `🔴 Redis server is connected`);
-    logWithTimestamp({ isForce: true }, `ℹ️ Version: v1.0.5`);
+    logWithTimestamp({ isForce: true }, `ℹ️ Version: v1.0.6`);
     
     // 🆕 自動恢復之前的活躍專案
     await recoverActiveProjects();

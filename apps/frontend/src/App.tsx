@@ -59,7 +59,7 @@ function App() {
             pointerEvents: 'none',
           }}
         >
-          v1.0.5
+          v1.0.6
         </Box>
       </Box>
     </ThemeProvider>
