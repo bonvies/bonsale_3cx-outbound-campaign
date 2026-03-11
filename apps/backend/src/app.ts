@@ -22,6 +22,7 @@ import { createServer as createFiasServer } from './util/fias';
 // CallSchedule 相關
 import callScheduleRouter from './routes/callSchedule';
 import { initDatabase } from './services/database';
+import { startCallMonitorServer } from './services/callMonitorService';
 
 // Load environment variables
 dotenv.config();
@@ -276,6 +277,8 @@ httpServer.listen(PORT, async () => {
     await initRedis();
     // 初始化 SQLite 資料庫
     await initDatabase();
+    // 啟動 NewRock OM API 撥號狀態監控伺服器
+    startCallMonitorServer();
     logWithTimestamp({ isForce: true }, `🚀 Server is running on port ${PORT}`);
     logWithTimestamp({ isForce: true }, `🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     logWithTimestamp({ isForce: true }, `🔌 WebSocket server is running on port ${PORT}`);

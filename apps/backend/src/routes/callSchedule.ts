@@ -5,6 +5,7 @@ import { getDatabase } from '../services/database';
 import { getBonsaleCompanySys } from '../services/api/bonsale';
 import schedule from 'node-schedule'
 import { mackeCall } from '@/services/api/newRockApi';
+import { registerCall, cancelScheduleJobs } from '../services/callMonitorService';
 const router: Router = express.Router();
 
 interface DbRow {
@@ -158,21 +159,33 @@ router.post('/', (req: Request, res: Response) => {
 
     // 2. 再針對資料進行排程
     const jobDate = new Date(date);
+    const maxRetriesNum = Math.max(0, parseInt(maxRetries as string, 10) || 0);
+    const retryIntervalMs = Math.max(0, parseFloat(retryInterval as string) || 0) * 60 * 1000;
+    // 撥打方（主叫）分機：優先使用環境變數，否則預設 '9038'
+    const FROM_EXTENSION = process.env.OM_CALL_FROM_EXTENSION ?? '9038';
     console.log(`[CallSchedule] Scheduling job for ID: ${newId} at ${jobDate.toISOString()}`);
     schedule.scheduleJob(newId, jobDate, async () => {
       console.log(`[CallSchedule] Executing scheduled job for ID: ${newId} at ${new Date().toISOString()}`);
       try {
         // 撥打電話
-        const toCall = await mackeCall('9038', '9037'); // TODO: 分機指定問題，這裡先寫死測試用，實際上你應該把它包在一個服務函式裡，並傳入必要參數（例如房間號碼）來撥打對應的電話
+        const toCall = await mackeCall(FROM_EXTENSION, extension);
         if (!toCall.success) {
           console.error(`[CallSchedule] Call failed for ID: ${newId}`, toCall.error);
-        } else {
-          console.log(`[CallSchedule] Call successful for ID: ${newId}`);
+          db.prepare(`UPDATE call_schedules SET callStatus = '錯誤' WHERE id = ?`).run(newId);
+          return;
         }
-        db.prepare(`UPDATE call_schedules SET callStatus = '已完成' WHERE id = ?`).run(newId);
-        console.log(`[CallSchedule] Job completed, status updated to 已完成 for ID: ${newId}`);
+        console.log(`[CallSchedule] Call initiated for ID: ${newId}, monitoring answer state...`);
+        db.prepare(`UPDATE call_schedules SET callStatus = '撥打中' WHERE id = ?`).run(newId);
+        // 向 OM 監控服務登記此通話，由其負責後續重試與狀態更新
+        registerCall({
+          scheduleId: newId,
+          extension,
+          from: FROM_EXTENSION,
+          maxRetries: maxRetriesNum,
+          retryIntervalMs,
+        });
       } catch (err) {
-        console.error(`[CallSchedule] Failed to update status for ID: ${newId}`, err);
+        console.error(`[CallSchedule] Failed to execute scheduled call for ID: ${newId}`, err);
         db.prepare(`UPDATE call_schedules SET callStatus = '錯誤' WHERE id = ?`).run(newId);
       }
     });
@@ -221,30 +234,39 @@ router.put('/:id', async (req: Request, res: Response) => {
       id
     );
 
-    // 2. 取消舊排程，用更新後的 date 重新安排
-    const existingJob = schedule.scheduledJobs[id];
-    if (existingJob) {
-      existingJob.cancel();
-      console.log(`[CallSchedule] Cancelled existing job for ID: ${id}`);
-    }
-    const updatedRow = db.prepare('SELECT date FROM call_schedules WHERE id = ?').get(id) as { date: string } | undefined;
+    // 2. 取消舊排程（含所有可能存在的 retry job），用更新後的 date 重新安排
+    cancelScheduleJobs(id, schedule.scheduledJobs);
+    const updatedRow = db.prepare(
+      'SELECT date, extension, retryInterval, maxRetries FROM call_schedules WHERE id = ?'
+    ).get(id) as { date: string; extension: string; retryInterval: string; maxRetries: string } | undefined;
     if (updatedRow) {
       const jobDate = new Date(updatedRow.date);
+      const updatedExtension = extension ?? updatedRow.extension;
+      const updatedMaxRetries = Math.max(0, parseInt(maxRetries ?? updatedRow.maxRetries, 10) || 0);
+      const updatedRetryIntervalMs =
+        Math.max(0, parseFloat(retryInterval ?? updatedRow.retryInterval) || 0) * 60 * 1000;
+      const fromExtension = process.env.OM_CALL_FROM_EXTENSION ?? '9038';
       console.log(`[CallSchedule] Rescheduling job for ID: ${id} at ${jobDate.toISOString()}`);
       schedule.scheduleJob(id, jobDate, async () => {
         console.log(`[CallSchedule] Executing rescheduled job for ID: ${id} at ${new Date().toISOString()}`);
         try {
-          // 撥打電話
-          const toCall = await mackeCall('9038', '9037'); // TODO: 分機指定問題，這裡先寫死測試用，實際上你應該把它包在一個服務函式裡，並傳入必要參數（例如房間號碼）來撥打對應的電話
+          const toCall = await mackeCall(fromExtension, updatedExtension);
           if (!toCall.success) {
             console.error(`[CallSchedule] Call failed for ID: ${id}`, toCall.error);
-          } else {
-            console.log(`[CallSchedule] Call successful for ID: ${id}`);
+            db.prepare(`UPDATE call_schedules SET callStatus = '錯誤' WHERE id = ?`).run(id);
+            return;
           }
-          db.prepare(`UPDATE call_schedules SET callStatus = '已完成' WHERE id = ?`).run(id);
-          console.log(`[CallSchedule] Job completed, status updated to 已完成 for ID: ${id}`);
+          console.log(`[CallSchedule] Call initiated for ID: ${id}, monitoring answer state...`);
+          db.prepare(`UPDATE call_schedules SET callStatus = '撥打中' WHERE id = ?`).run(id);
+          registerCall({
+            scheduleId: id,
+            extension: updatedExtension,
+            from: fromExtension,
+            maxRetries: updatedMaxRetries,
+            retryIntervalMs: updatedRetryIntervalMs,
+          });
         } catch (err) {
-          console.error(`[CallSchedule] Failed to update status for ID: ${id}`, err);
+          console.error(`[CallSchedule] Failed to execute rescheduled call for ID: ${id}`, err);
           db.prepare(`UPDATE call_schedules SET callStatus = '錯誤' WHERE id = ?`).run(id);
         }
       });
@@ -263,6 +285,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     const db = getDatabase();
     const { id } = req.params;
     db.prepare('DELETE FROM call_schedules WHERE id = ?').run(id);
+    cancelScheduleJobs(id, schedule.scheduledJobs);
     res.json({ success: true });
   } catch (error) {
     console.error('[CallSchedule] DELETE error:', error);
