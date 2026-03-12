@@ -9,6 +9,8 @@ import {
 
 const router: Router = express.Router();
 
+// date 欄位統一使用 UTC ISO 8601 格式（Z 結尾），由前端負責轉換當地時間為 UTC 後傳入。
+// 回傳時會依 Bonsale timezoneIANA 轉回當地時間顯示。
 const UTC_ISO_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
 function validateUtcDate(date: string): boolean {
@@ -69,6 +71,10 @@ router.post('/', (req: Request, res: Response) => {
     const newId = createCallSchedule({ audioFile, date, extension, notificationContent, retryInterval, maxRetries, notes });
     res.json({ success: true, data: { id: newId } });
   } catch (error) {
+    if (error instanceof Error && error.message === 'date must be in the future') {
+      res.status(400).json({ success: false, message: error.message });
+      return;
+    }
     console.error('[CallSchedule] POST error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
@@ -92,6 +98,10 @@ router.put('/:id', (req: Request, res: Response) => {
     }
     res.json({ success: true });
   } catch (error) {
+    if (error instanceof Error && error.message === 'date must be in the future') {
+      res.status(400).json({ success: false, message: error.message });
+      return;
+    }
     console.error('[CallSchedule] PUT error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }

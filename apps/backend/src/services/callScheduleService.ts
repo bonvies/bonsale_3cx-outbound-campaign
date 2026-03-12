@@ -187,6 +187,10 @@ export async function getCallScheduleById(id: string): Promise<CallScheduleRecor
 export function createCallSchedule(params: CreateCallScheduleParams): string {
   const { audioFile, date, extension, notificationContent, retryInterval, maxRetries, notes = '' } = params;
 
+  if (new Date(date) <= new Date()) {
+    throw new Error('date must be in the future');
+  }
+
   const db            = getDatabase();
   const newId         = randomUUID();
   const createdAt     = new Date().toISOString();
@@ -207,6 +211,10 @@ export function createCallSchedule(params: CreateCallScheduleParams): string {
 export function updateCallSchedule(id: string, params: UpdateCallScheduleParams): boolean {
   const db = getDatabase();
   const { audioFile, date, extension, callRecord, notes, notificationContent, retryInterval, maxRetries } = params;
+
+  if (date !== undefined && date !== null && new Date(date) <= new Date()) {
+    throw new Error('date must be in the future');
+  }
 
   db.prepare(`
     UPDATE call_schedules SET
@@ -256,11 +264,21 @@ export function recoverPendingSchedules(): void {
   const db  = getDatabase();
   const now = new Date().toISOString();
 
-  // 已過期但仍是「排程中」→ 標記為錯誤（伺服器停機期間錯過）
+  // 已過期但仍是「排程中」→ 標記為錯誤，寫入原因
   db.prepare(`
-    UPDATE call_schedules SET callStatus = '錯誤'
+    UPDATE call_schedules
+    SET callStatus = '錯誤',
+        notes = CASE WHEN notes IS NULL OR notes = '' THEN '伺服器重啟時排程已過期' ELSE notes || ' | 伺服器重啟時排程已過期' END
     WHERE callStatus = '排程中' AND date < ?
   `).run(now);
+
+  // 「等待重試」→ 標記為錯誤（retry job 在重啟後已消失，不會再執行），寫入原因
+  db.prepare(`
+    UPDATE call_schedules
+    SET callStatus = '錯誤',
+        notes = CASE WHEN notes IS NULL OR notes = '' THEN '伺服器重啟，重試排程已中斷' ELSE notes || ' | 伺服器重啟，重試排程已中斷' END
+    WHERE callStatus LIKE '等待重試%'
+  `).run();
 
   // 未來的「排程中」→ 重新登記 job
   const rows = db.prepare(`

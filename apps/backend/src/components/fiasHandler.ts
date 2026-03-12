@@ -5,7 +5,11 @@ import { createCallSchedule, deleteCallSchedule } from '@/services/callScheduleS
 import { getBonsaleCompanySys } from '@/services/api/bonsale';
 
 /**
- * 將 FIAS DT（YYMMDD）+ TI（HHMM）組成飯店時區的 UTC Date
+ * FIAS 協定沒有前端，PMS 送來的是飯店當地時間（TI/DT），
+ * 由此函式代為轉換成 UTC，再傳給 createCallSchedule 存入 DB。
+ * （REST API 則由前端自行轉 UTC，後端只驗格式）
+ *
+ * FIAS DT（YYMMDD）+ TI（HHMM）→ 飯店時區 → UTC Date
  * 若 DT 未提供，預設使用當天；若時間已過則排明天
  */
 async function parseFiasDate(ti: string, dt?: string): Promise<Date> {
