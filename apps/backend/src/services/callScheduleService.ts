@@ -250,3 +250,34 @@ export function deleteCallSchedule(id: string): void {
   db.prepare('DELETE FROM call_schedules WHERE id = ?').run(id);
   cancelScheduleJobs(id, schedule.scheduledJobs);
 }
+
+/** 重啟恢復 - 將 DB 中未完成的排程重新登記 job */
+export function recoverPendingSchedules(): void {
+  const db  = getDatabase();
+  const now = new Date().toISOString();
+
+  // 已過期但仍是「排程中」→ 標記為錯誤（伺服器停機期間錯過）
+  db.prepare(`
+    UPDATE call_schedules SET callStatus = '錯誤'
+    WHERE callStatus = '排程中' AND date < ?
+  `).run(now);
+
+  // 未來的「排程中」→ 重新登記 job
+  const rows = db.prepare(`
+    SELECT id, date, extension, retryInterval, maxRetries
+    FROM call_schedules
+    WHERE callStatus = '排程中' AND date >= ?
+  `).all(now) as Pick<DbRow, 'id' | 'date' | 'extension' | 'retryInterval' | 'maxRetries'>[];
+
+  for (const row of rows) {
+    scheduleCallJob(
+      row.id,
+      new Date(row.date),
+      row.extension,
+      Math.max(0, parseInt(row.maxRetries, 10) || 0),
+      Math.max(0, parseFloat(row.retryInterval) || 0) * 60 * 1000,
+    );
+  }
+
+  console.log(`[CallScheduleService] 恢復排程：${rows.length} 筆重新登記，過期排程已標記為錯誤`);
+}

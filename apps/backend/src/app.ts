@@ -23,6 +23,7 @@ import { createServer as createFiasServer } from './util/fias';
 import callScheduleRouter from './routes/callSchedule';
 import { initDatabase } from './services/database';
 import { startCallMonitorServer } from './services/callMonitorService';
+import { recoverPendingSchedules } from './services/callScheduleService';
 
 // Load environment variables
 dotenv.config();
@@ -277,6 +278,8 @@ httpServer.listen(PORT, async () => {
     await initRedis();
     // 初始化 SQLite 資料庫
     await initDatabase();
+    // 恢復重啟前未完成的排程
+    recoverPendingSchedules();
     // 啟動 NewRock OM API 撥號狀態監控伺服器
     startCallMonitorServer();
     logWithTimestamp({ isForce: true }, `🚀 Server is running on port ${PORT}`);
