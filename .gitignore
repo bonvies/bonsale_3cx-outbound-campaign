@@ -29,3 +29,9 @@ apps/backend/*.env
 
 # turbo
 .turbo
+
+# sql
+*.sql
+
+# SQLite database files
+apps/backend/data/
