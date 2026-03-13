@@ -1,5 +1,5 @@
 import { WebSocket } from "ws";
-import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from '../util/timestamp';
+import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 
 export interface WebSocketManagerOptions {
   url: string;

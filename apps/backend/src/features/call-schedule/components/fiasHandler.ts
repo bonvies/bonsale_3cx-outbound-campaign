@@ -1,8 +1,8 @@
 import { fromZonedTime } from 'date-fns-tz';
-import { FiasConn, FiasMessage } from '@/types/fias/fiasTypes';
-import { getDatabase } from '@/services/database';
-import { createCallSchedule, deleteCallSchedule } from '@/services/callScheduleService';
-import { getBonsaleCompanySys } from '@/services/api/bonsale';
+import { FiasConn, FiasMessage } from '@call-schedule/types/fias/fiasTypes';
+import { getDatabase } from '@call-schedule/services/database';
+import { createCallSchedule, deleteCallSchedule } from '@call-schedule/services/callScheduleService';
+import { getBonsaleCompanySys } from '@shared-local/services/api/bonsale';
 
 /**
  * FIAS 協定沒有前端，PMS 送來的是飯店當地時間（TI/DT），

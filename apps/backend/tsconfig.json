@@ -14,7 +14,10 @@
     "baseUrl": ".",
     "paths": {
       "@shared/*": ["../../packages/shared-types/src/*"],
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@outbound/*": ["./src/features/outbound-campaign/*"],
+      "@call-schedule/*": ["./src/features/call-schedule/*"],
+      "@shared-local/*": ["./src/shared/*"]
     }
   },
   "include": ["src/**/*", "src/types"],

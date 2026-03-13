@@ -2,9 +2,9 @@ import { randomUUID } from 'crypto';
 import schedule from 'node-schedule';
 import { formatInTimeZone } from 'date-fns-tz';
 import { getDatabase } from './database';
-import { mackeCall } from '@/services/api/newRockApi';
+import { mackeCall } from './api/newRockApi';
 import { registerCall, cancelScheduleJobs } from './callMonitorService';
-import { getBonsaleCompanySys } from './api/bonsale';
+import { getBonsaleCompanySys } from '@shared-local/services/api/bonsale';
 
 // ─────────────────────────────────────────────
 // Types

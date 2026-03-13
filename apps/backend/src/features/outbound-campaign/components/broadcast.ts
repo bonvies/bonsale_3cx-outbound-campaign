@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { ProjectManager } from '../class/projectManager';
-import { logWithTimestamp, errorWithTimestamp } from '../util/timestamp';
+import { logWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 
 /**
  * 廣播所有專案資訊給所有連線中的 WebSocket 客戶端

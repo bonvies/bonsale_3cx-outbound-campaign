@@ -1,6 +1,6 @@
 import redisClient from '../services/redis';
 import Project from './project';
-import { logWithTimestamp, errorWithTimestamp } from '../util/timestamp';
+import { logWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 
 // 定義 CallRestriction 型別
 type CallRestriction = {

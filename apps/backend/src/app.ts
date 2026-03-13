@@ -19,32 +19,32 @@ import { WebSocketServer } from 'ws';
 // - ProjectManager    : 管理所有外播專案的生命週期（建立、停止、從 Redis 恢復）
 // - CallListManager   : 管理各專案的撥號名單（Redis 中的通話佇列）
 // - Project           : 單一外播專案的核心類別（3CX 連線、撥號、狀態追蹤）
-import { router as bonsaleRouter, clientWsWebHook } from './routes/bonsale';
-import { initRedis, closeRedis } from './services/redis';
-import { broadcastAllProjects, broadcastError } from './components/broadcast';
-import { ProjectManager } from './class/projectManager';
-import { CallListManager } from './class/callListManager';
-import Project from './class/project';
+import { router as bonsaleRouter, clientWsWebHook } from './features/outbound-campaign/routes/bonsale';
+import { initRedis, closeRedis } from './features/outbound-campaign/services/redis';
+import { broadcastAllProjects, broadcastError } from './features/outbound-campaign/components/broadcast';
+import { ProjectManager } from './features/outbound-campaign/class/projectManager';
+import { CallListManager } from './features/outbound-campaign/class/callListManager';
+import Project from './features/outbound-campaign/class/project';
 
 // 語音通知 (Morning Call)
 // - callScheduleRouter    : 提供 REST API 管理語音通知排程（新增、查詢、刪除）
 // - initDatabase          : 初始化 SQLite 資料庫（儲存排程設定）
 // - startCallMonitorServer: 啟動 NewRock OM API 狀態監控（輪詢通話結果）
 // - recoverPendingSchedules: 服務器重啟後，重新註冊尚未執行的排程任務
-import callScheduleRouter from './routes/callSchedule';
-import { initDatabase } from './services/database';
-import { startCallMonitorServer } from './services/callMonitorService';
-import { recoverPendingSchedules } from './services/callScheduleService';
+import callScheduleRouter from './features/call-schedule/routes/callSchedule';
+import { initDatabase } from './features/call-schedule/services/database';
+import { startCallMonitorServer } from './features/call-schedule/services/callMonitorService';
+import { recoverPendingSchedules } from './features/call-schedule/services/callScheduleService';
 
 // FIAS (Front desk Information and Administration System)
 // - 接收飯店 PMS 系統透過 TCP 傳送的房客資訊，觸發語音通知撥號
 // - fiasHandler    : 解析並處理 FIAS 訊息
 // - createFiasServer: 建立 TCP 伺服器監聽 FIAS 連線
-import fiasHandler from './components/fiasHandler';
-import { createServer as createFiasServer } from './util/fias';
+import fiasHandler from './features/call-schedule/components/fiasHandler';
+import { createServer as createFiasServer } from './features/call-schedule/util/fias';
 
 // 工具
-import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from './util/timestamp';
+import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from './shared/util/timestamp';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 環境設定 & Feature Flags

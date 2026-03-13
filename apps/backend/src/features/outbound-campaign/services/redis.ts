@@ -1,5 +1,5 @@
 import { createClient, RedisClientType } from 'redis';
-import { logWithTimestamp, errorWithTimestamp } from '../util/timestamp';
+import { logWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 
 const client: RedisClientType = createClient({
   url: process.env.REDIS_URL || 'redis://localhost:6379'

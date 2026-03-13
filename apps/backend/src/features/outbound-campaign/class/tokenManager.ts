@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
-import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from '../util/timestamp';
+import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 import { get3cxToken, getCaller } from '../services/api/callControl';
-import { ProjectManager } from '../class/projectManager';
+import { ProjectManager } from './projectManager';
 
 /**
  * Token 管理器類別

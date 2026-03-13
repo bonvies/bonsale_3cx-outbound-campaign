@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import dotenv from 'dotenv';
 
-import { Participant } from '@/types/3CX/callControl';
+import { Participant } from '@outbound/types/3CX/callControl';
 
 dotenv.config();
 

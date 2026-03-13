@@ -1,5 +1,5 @@
 import redisClient from '../services/redis';
-import { logWithTimestamp, errorWithTimestamp } from '../util/timestamp';
+import { logWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 
 /**
  * 撥號名單管理器

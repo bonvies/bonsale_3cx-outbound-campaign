@@ -1,8 +1,8 @@
 import http from 'http';
 import schedule from 'node-schedule';
 import { getDatabase } from './database';
-import { mackeCall } from '@/services/api/newRockApi';
-import { logWithTimestamp, errorWithTimestamp } from '../util/timestamp';
+import { mackeCall } from './api/newRockApi';
+import { logWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 
 /**
  * NewRock OM API 撥號狀態監控服務

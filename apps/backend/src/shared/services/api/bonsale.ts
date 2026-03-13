@@ -8,7 +8,7 @@ import {
   PostVisitRecordApiResult,
   GetBonsaleConfigApiResult,
   PutBonsaleConfigApiResult
-} from '@/types/bonsale/index';
+} from '@outbound/types/bonsale/index';
 
 dotenv.config();
 

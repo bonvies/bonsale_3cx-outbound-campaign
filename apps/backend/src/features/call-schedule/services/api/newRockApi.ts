@@ -1,4 +1,4 @@
-import { http10Post } from '@/util/http10-client';
+import { http10Post } from '@call-schedule/util/http10-client';
 
 const API_HOST = '192.168.5.240';
 const API_PATH = '/xml';

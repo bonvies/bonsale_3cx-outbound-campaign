@@ -2,9 +2,9 @@ import { WebSocketServer } from "ws";
 import dotenv from 'dotenv';
 import { throttle, type DebouncedFunc } from 'lodash';
 import { Mutex } from 'async-mutex';
-import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from '../util/timestamp';
+import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 import { getCaller, makeCall, get3cxToken, getParticipant } from '../services/api/callControl'
-import { ProjectManager } from '../class/projectManager';
+import { ProjectManager } from './projectManager';
 import { broadcastAllProjects } from '../components/broadcast';
 import { WebSocketManager } from './webSocketManager';
 import { TokenManager } from './tokenManager';
@@ -16,10 +16,10 @@ import {
   updateVisitRecord,
   updateBonsaleProjectAutoDialExecute,
   getBonsaleCompanySys
-} from '../services/api/bonsale';
+} from '@shared-local/services/api/bonsale';
 import { getUsers } from '../services/api/xApi';
 import { Outbound } from '../types/bonsale/getOutbound';
-import { Participant } from '@/types/3CX/callControl';
+import { Participant } from '@outbound/types/3CX/callControl';
 import { post9000Dummy, post9000 } from '../services/api/insertOverdueMessageForAi';
 import { isTodayInSchedule } from '../util/iCalendar';
 import { formatInTimeZone } from 'date-fns-tz'

@@ -1,5 +1,5 @@
 import { rrulestr } from 'rrule';
-import { logWithTimestamp } from './timestamp';
+import { logWithTimestamp } from '@shared-local/util/timestamp';
 
 // 檢查兩個日期是否為同一天 (UTC)
 function isSameDay(date1: Date, date2: Date): boolean {
