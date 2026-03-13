@@ -12,7 +12,7 @@ import { Dashboard, Schedule } from '@mui/icons-material';
 
 // 路由標題映射
 const routeTitles: Record<string, string> = {
-  '/': '專案自動外撥',
+  '/outbound-campaign': '專案自動外撥',
   '/call-schedule': '自動語音通知',
 };
 
@@ -56,7 +56,7 @@ function Navbar() {
           <Button
             variant='text'
             startIcon={<Dashboard />}
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/outbound-campaign')}
             sx={{
               color: 'white',
               px: 2,

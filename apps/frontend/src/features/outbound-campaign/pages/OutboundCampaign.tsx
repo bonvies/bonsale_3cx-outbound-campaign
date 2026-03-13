@@ -30,7 +30,7 @@ import useConnectBonsaleWebHookWebSocket from '../hooks/useConnectBonsaleWebHook
 import useUpdateBonsaleProject from '../hooks/api/useUpdateBonsaleProject';
 
 const VITE_ENV = import.meta.env.VITE_ENV;
-export default function Home() {
+export default function OutboundCampaign() {
   // WebSocket 狀態
   const [wsStatus, setWsStatus] = useState<'connecting'|'open'|'closed'|'error'>('connecting');
   const [wsMessage, setWsMessage] = useState<string>('');
