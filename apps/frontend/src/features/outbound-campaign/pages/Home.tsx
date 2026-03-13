@@ -21,7 +21,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import InfoOutlineIcon from '@mui/icons-material/InfoOutline';
 
-import GlobalSnackbar, { type GlobalSnackbarRef } from '../components/GlobalSnackbar';
+import GlobalSnackbar, { type GlobalSnackbarRef } from '../../../shared/components/GlobalSnackbar';
 import ProjectCustomersDialog from '../components/ProjectCustomersDialog';
 
 import useProjectOutboundData from '../hooks/useProjectOutboundData';

@@ -1,8 +1,8 @@
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 
 import Layout from "../components/Layout";
-import Home from "../pages/Home";
-import CallSchedule from "../pages/CallSchedule";
+import Home from "../../features/outbound-campaign/pages/Home";
+import CallSchedule from "../../features/call-schedule/pages/CallSchedule";
 
 const router = createBrowserRouter([
   {

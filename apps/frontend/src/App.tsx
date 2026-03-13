@@ -1,8 +1,8 @@
-import Router from "./router/Router.tsx";
+import Router from "./shared/router/Router.tsx";
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { Toaster } from 'react-hot-toast';
-import theme from './theme/theme.ts';
-import custom from "./theme/custom.ts";
+import theme from './shared/theme/theme.ts';
+import custom from "./shared/theme/custom.ts";
 
 const muiTheme = createTheme(theme, custom);
 

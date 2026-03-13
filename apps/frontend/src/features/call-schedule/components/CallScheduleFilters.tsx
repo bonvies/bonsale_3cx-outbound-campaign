@@ -3,7 +3,7 @@ import { DateTimePicker } from '@mui/x-date-pickers'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
 import { renderTimeViewClock } from '@mui/x-date-pickers'
-import type { CallScheduleFilters as FilterType } from '../../types/callSchedule'
+import type { CallScheduleFilters as FilterType } from '../types/callSchedule'
 
 interface CallScheduleFiltersProps {
   filters: FilterType

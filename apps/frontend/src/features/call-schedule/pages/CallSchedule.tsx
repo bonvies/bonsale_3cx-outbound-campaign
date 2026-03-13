@@ -24,16 +24,16 @@ import {
 import { format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 import type { CallScheduleFilters as FilterType } from '../types/callSchedule'
-import { CallScheduleDialog } from '../components/CallSchedule/CallScheduleDialog'
-import { CallScheduleInfoDialog } from '../components/CallSchedule/CallScheduleInfoDialog'
-import { CallScheduleFilters } from '../components/CallSchedule/CallScheduleFilters'
-import { DeleteConfirmDialog } from '../components/CallSchedule/DeleteConfirmDialog'
+import { CallScheduleDialog } from '../components/CallScheduleDialog'
+import { CallScheduleInfoDialog } from '../components/CallScheduleInfoDialog'
+import { CallScheduleFilters } from '../components/CallScheduleFilters'
+import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
 import {
   fetchCallSchedules,
   deleteCallSchedule,
   type FetchCallSchedulesParams,
 } from '../api/CallSchedule'
-import { fetchBonsaleCompany } from '../api/Bonsale'
+import { fetchBonsaleCompany } from '../../outbound-campaign/api/Bonsale'
 
 const PAGE_SIZE = 10
 

@@ -1,6 +1,6 @@
 import axios from 'axios'
 import type { CallScheduleRecord } from '../types/callSchedule'
-import type { CallScheduleFormData } from '../components/CallSchedule/CallScheduleDialog'
+import type { CallScheduleFormData } from '../components/CallScheduleDialog'
 
 const { hostname } = window.location
 const api_protocol = import.meta.env.VITE_API_PROTOCOL
