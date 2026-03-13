@@ -185,7 +185,7 @@ IDLE_CHECK_BACKOFF_FACTOR=1.5
 
 # Feature Flags
 ENABLE_OUTBOUND_CAMPAIGN=true   # 自動外播功能
-ENABLE_MORNING_CALL=true        # 自動語音通知 (Morning Call)
+ENABLE_CALL_SCHEDULE=true        # 自動語音通知 (Call Schedule)
 ```
 
 ## Development Workflow

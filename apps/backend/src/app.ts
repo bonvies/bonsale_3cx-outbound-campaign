@@ -58,10 +58,10 @@ dotenv.config();
  * 預設皆為 true（不設定環境變數 = 啟用）。
  * 若要停用某功能，在 .env 中設為 'false'：
  *   ENABLE_OUTBOUND_CAMPAIGN=false  → 停用自動外播（不連 Redis、不建 WebSocket）
- *   ENABLE_MORNING_CALL=false       → 停用語音通知（不建 SQLite、不啟動 FIAS TCP）
+ *   ENABLE_CALL_SCHEDULE=false       → 停用語音通知（不建 SQLite、不啟動 FIAS TCP）
  */
 const ENABLE_OUTBOUND_CAMPAIGN = process.env.ENABLE_OUTBOUND_CAMPAIGN !== 'false';
-const ENABLE_MORNING_CALL      = process.env.ENABLE_MORNING_CALL      !== 'false';
+const ENABLE_CALL_SCHEDULE      = process.env.ENABLE_CALL_SCHEDULE      !== 'false';
 
 const PORT      = process.env.HTTP_PORT || 4020; // HTTP / WebSocket 主服務埠
 const FIAS_PORT = process.env.FIAS_PORT || 4021; // FIAS TCP 伺服器埠
@@ -84,7 +84,7 @@ if (ENABLE_OUTBOUND_CAMPAIGN) {
   // 自動外播 API：/api/bonsale/*
   app.use('/api/bonsale', bonsaleRouter);
 }
-if (ENABLE_MORNING_CALL) {
+if (ENABLE_CALL_SCHEDULE) {
   // 語音通知排程 API：/api/call-schedule/*
   app.use('/api/call-schedule', callScheduleRouter);
 }
@@ -380,7 +380,7 @@ httpServer.listen(PORT, async () => {
       logWithTimestamp({ isForce: true }, `🔴 Redis server is connected`);
     }
 
-    if (ENABLE_MORNING_CALL) { // 只有在語音通知功能啟用時才初始化資料庫與啟動相關服務
+    if (ENABLE_CALL_SCHEDULE) { // 只有在語音通知功能啟用時才初始化資料庫與啟動相關服務
       // 初始化 SQLite 資料庫，用於儲存語音通知排程設定
       await initDatabase();
       // 重新載入服務器重啟前尚未執行的排程任務
@@ -392,7 +392,7 @@ httpServer.listen(PORT, async () => {
     logWithTimestamp({ isForce: true }, `🚀 Server is running on port ${PORT}`);
     logWithTimestamp({ isForce: true }, `🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     logWithTimestamp({ isForce: true }, `⚡️ 自動外播: ${ENABLE_OUTBOUND_CAMPAIGN ? '啟用' : '停用'}`);
-    logWithTimestamp({ isForce: true }, `⚡️ 語音通知: ${ENABLE_MORNING_CALL ? '啟用' : '停用'}`);
+    logWithTimestamp({ isForce: true }, `⚡️ 語音通知: ${ENABLE_CALL_SCHEDULE ? '啟用' : '停用'}`);
     if (ENABLE_OUTBOUND_CAMPAIGN) { // 只有在自動外播功能啟用時才顯示 WebSocket 相關資訊
       logWithTimestamp({ isForce: true }, `🔌 WebSocket server is running on port ${PORT}`);
       logWithTimestamp({ isForce: true }, `🖥️ Bonsale WebHook WebSocket is available on port ${PORT}/api/bonsale/webhook-ws`);
@@ -452,10 +452,10 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
  * 監聽飯店 PMS 系統透過 TCP 傳入的 FIAS 訊息（如房客 Check-in / Wake-up Call 請求）。
  * 收到訊息後交由 fiasHandler 解析並觸發對應的語音通知撥號。
  *
- * 僅在 ENABLE_MORNING_CALL=true 時啟動（語音通知功能的一部分）。
+ * 僅在 ENABLE_CALL_SCHEDULE=true 時啟動（語音通知功能的一部分）。
  * 監聽埠由 FIAS_PORT 環境變數控制，預設 4021。
  */
-if (ENABLE_MORNING_CALL) { // 只有在語音通知功能啟用時才啟動 FIAS TCP 伺服器
+if (ENABLE_CALL_SCHEDULE) { // 只有在語音通知功能啟用時才啟動 FIAS TCP 伺服器
   const fiasServer = createFiasServer(async (msg, conn) => {
     console.log('--- FIAS TCP 服務器收到訊息 ---');
     console.log('訊息內容:', msg);
