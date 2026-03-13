@@ -1,8 +1,39 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
-import { Box, Container } from '@mui/material';
+import { Box, Container, CircularProgress } from '@mui/material';
+import { useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { FEATURES } from '../config/features';
 
 export default function Layout() {
+  const { config, isLoading } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isLoading || !config) return;
+
+    const currentFeature = FEATURES.find(f => f.path === location.pathname);
+    const firstEnabled = FEATURES.find(f => config[f.key]);
+
+    // 當前路由是被停用的功能，或停在根路由 / → 導向第一個可用功能
+    const shouldRedirect =
+      !currentFeature ||
+      (currentFeature && !config[currentFeature.key]);
+
+    if (shouldRedirect && firstEnabled) {
+      navigate(firstEnabled.path, { replace: true });
+    }
+  }, [isLoading, config, location.pathname, navigate]);
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   return (
     <Box
       sx={{

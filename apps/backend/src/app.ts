@@ -43,6 +43,9 @@ import { recoverPendingSchedules } from './features/call-schedule/services/callS
 import fiasHandler from './features/call-schedule/components/fiasHandler';
 import { createServer as createFiasServer } from './features/call-schedule/util/fias';
 
+// 共用設定 API
+import configRouter from './shared/routes/config';
+
 // 工具
 import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from './shared/util/timestamp';
 
@@ -53,15 +56,25 @@ import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from './share
 dotenv.config();
 
 /**
- * 功能開關
+ * 功能開關（必填）
  *
- * 預設皆為 true（不設定環境變數 = 啟用）。
- * 若要停用某功能，在 .env 中設為 'false'：
- *   ENABLE_OUTBOUND_CAMPAIGN=false  → 停用自動外播（不連 Redis、不建 WebSocket）
- *   ENABLE_CALL_SCHEDULE=false       → 停用語音通知（不建 SQLite、不啟動 FIAS TCP）
+ * 兩個變數皆為必填，未設定將直接終止服務啟動。
+ * 在 .env 中明確填寫 'true' 或 'false'：
+ *   ENABLE_OUTBOUND_CAMPAIGN=true   → 啟用自動外播（連 Redis、建 WebSocket）
+ *   ENABLE_OUTBOUND_CAMPAIGN=false  → 停用自動外播
+ *   ENABLE_CALL_SCHEDULE=true       → 啟用語音通知（建 SQLite、啟動 FIAS TCP）
+ *   ENABLE_CALL_SCHEDULE=false      → 停用語音通知
  */
-const ENABLE_OUTBOUND_CAMPAIGN = process.env.ENABLE_OUTBOUND_CAMPAIGN !== 'false';
-const ENABLE_CALL_SCHEDULE      = process.env.ENABLE_CALL_SCHEDULE      !== 'false';
+if (process.env.ENABLE_OUTBOUND_CAMPAIGN === undefined) {
+  console.error('[FATAL] 環境變數 ENABLE_OUTBOUND_CAMPAIGN 未設定，請在 .env 填入 true 或 false');
+  process.exit(1);
+}
+if (process.env.ENABLE_CALL_SCHEDULE === undefined) {
+  console.error('[FATAL] 環境變數 ENABLE_CALL_SCHEDULE 未設定，請在 .env 填入 true 或 false');
+  process.exit(1);
+}
+const ENABLE_OUTBOUND_CAMPAIGN = process.env.ENABLE_OUTBOUND_CAMPAIGN === 'true';
+const ENABLE_CALL_SCHEDULE      = process.env.ENABLE_CALL_SCHEDULE      === 'true';
 
 const PORT      = process.env.HTTP_PORT || 4020; // HTTP / WebSocket 主服務埠
 const FIAS_PORT = process.env.FIAS_PORT || 4021; // FIAS TCP 伺服器埠
@@ -80,6 +93,8 @@ app.use(express.json({ limit: '10mb' }));      // 解析 JSON body（限 10MB）
 app.use(express.urlencoded({ extended: true })); // 解析 URL-encoded form data
 
 // 路由掛載（依功能開關決定是否啟用）
+app.use('/api/config', configRouter);  // 功能設定 API（無條件掛載，前端啟動時需要）
+
 if (ENABLE_OUTBOUND_CAMPAIGN) {
   // 自動外播 API：/api/bonsale/*
   app.use('/api/bonsale', bonsaleRouter);

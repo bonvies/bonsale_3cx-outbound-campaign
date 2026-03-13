@@ -8,23 +8,25 @@ import {
 import { useTheme } from '@mui/material/styles';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMemo } from 'react';
-import { Dashboard, Schedule } from '@mui/icons-material';
-
-// 路由標題映射
-const routeTitles: Record<string, string> = {
-  '/outbound-campaign': '專案自動外撥',
-  '/call-schedule': '自動語音通知',
-};
+import { useAuth } from '../context/AuthContext';
+import { FEATURES } from '../config/features';
 
 function Navbar() {
   const theme = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
+  const { config } = useAuth();
 
-  // 根據當前路由獲取標題
+  const enabledFeatures = useMemo(
+    () => FEATURES.filter(f => config?.[f.key]),
+    [config]
+  );
+
+  const showNav = enabledFeatures.length > 1;
+
   const pageTitle = useMemo(() => {
-    return routeTitles[location.pathname] || '專案自動外撥監控面板';
-  }, [location.pathname]);
+    return enabledFeatures.find(f => f.path === location.pathname)?.label || '監控面板';
+  }, [enabledFeatures, location.pathname]);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -52,38 +54,28 @@ function Navbar() {
           {pageTitle}
         </Typography>
 
-        <Stack direction='row' spacing={1}>
-          <Button
-            variant='text'
-            startIcon={<Dashboard />}
-            onClick={() => navigate('/outbound-campaign')}
-            sx={{
-              color: 'white',
-              px: 2,
-              bgcolor: isActive('/') ? 'rgba(255, 255, 255, 0.2)' : 'transparent',
-              '&:hover': {
-                bgcolor: isActive('/') ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.1)',
-              },
-            }}
-          >
-            專案自動外撥
-          </Button>
-          <Button
-            variant='text'
-            startIcon={<Schedule />}
-            onClick={() => navigate('/call-schedule')}
-            sx={{
-              color: 'white',
-              px: 2,
-              bgcolor: isActive('/call-schedule') ? 'rgba(255, 255, 255, 0.2)' : 'transparent',
-              '&:hover': {
-                bgcolor: isActive('/call-schedule') ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.1)',
-              },
-            }}
-          >
-            自動語音通知
-          </Button>
-        </Stack>
+        {showNav && (
+          <Stack direction='row' spacing={1}>
+            {enabledFeatures.map(({ key, path, label, icon: Icon }) => (
+              <Button
+                key={key}
+                variant='text'
+                startIcon={<Icon />}
+                onClick={() => navigate(path)}
+                sx={{
+                  color: 'white',
+                  px: 2,
+                  bgcolor: isActive(path) ? 'rgba(255, 255, 255, 0.2)' : 'transparent',
+                  '&:hover': {
+                    bgcolor: isActive(path) ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                  },
+                }}
+              >
+                {label}
+              </Button>
+            ))}
+          </Stack>
+        )}
       </Container>
     </Box>
   );
