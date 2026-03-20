@@ -50,7 +50,8 @@ export function createOutboundRouter(
       });
     }
 
-    if (activeProjects.has(project.projectId)) {
+    const existing = activeProjects.get(project.projectId);
+    if (existing && existing.state === 'active') {
       return res.status(409).json({
         success: false,
         message: `Project ${project.projectId} is already running`
@@ -62,6 +63,7 @@ export function createOutboundRouter(
       const projectInstance = await Project.initOutboundProject(project);
       activeProjects.set(project.projectId, projectInstance);
       projectInstance.setBroadcastWebSocket(mainWebSocketServer);
+      projectInstance.setOnCompleteStop(() => activeProjects.delete(project.projectId));
       await projectInstance.create3cxWebSocketConnection(mainWebSocketServer);
 
       return res.status(200).json({ success: true, projectId: project.projectId });
@@ -100,7 +102,8 @@ export function createOutboundRouter(
       });
     }
 
-    if (!activeProjects.has(projectId)) {
+    const runningProject = activeProjects.get(projectId);
+    if (!runningProject || runningProject.state !== 'active') {
       return res.status(404).json({
         success: false,
         message: `Project ${projectId} is not running`

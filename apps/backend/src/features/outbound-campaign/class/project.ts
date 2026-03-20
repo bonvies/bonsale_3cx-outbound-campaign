@@ -133,6 +133,7 @@ export default class Project {
   callRestriction: CallRestriction[] = []; // 新增 callRestriction 屬性
   callerExtensionLastExecutionTime: CallerExtensionLastExecutionTime = {}; // 分機最新執行時間記錄
   private previousCallRecord: Array<CallRecord> | null = null; // 保存前一筆撥打記錄
+  private onCompleteStop: (() => void) | null = null; // 完全停止後的 callback（例如從 activeProjects 移除）
   private wsManager: WebSocketManager | null = null;
   private tokenManager: TokenManager;
   private throttledMessageHandler: DebouncedFunc<(broadcastWs: WebSocketServer, data: Buffer) => Promise<void>> | null = null;
@@ -315,6 +316,10 @@ export default class Project {
    */
   setBroadcastWebSocket(broadcastWs: WebSocketServer): void {
     this.broadcastWsRef = broadcastWs;
+  }
+
+  setOnCompleteStop(callback: () => void): void {
+    this.onCompleteStop = callback;
   }
 
   /**
@@ -2218,6 +2223,9 @@ export default class Project {
       await this.broadcastProjectInfo(broadcastWs);
       
       logWithTimestamp(`專案 ${this.projectId} 已完全停止並移除`);
+
+      // 通知外部（例如 activeProjects Map）移除此實例
+      this.onCompleteStop?.();
     } catch (error) {
       errorWithTimestamp(`執行完全停止時發生錯誤:`, error);
     }

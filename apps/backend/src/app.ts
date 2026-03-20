@@ -246,6 +246,7 @@ async function recoverActiveProjects(): Promise<void> {
 
             // 注入 WebSocket 廣播引用，讓 Project 可以主動推送狀態給前端
             projectInstance.setBroadcastWebSocket(mainWebSocketServer);
+            projectInstance.setOnCompleteStop(() => activeProjects.delete(savedProject.projectId));
 
             // 重新建立與 3CX 的 WebSocket 連線，恢復通話監控
             await projectInstance.create3cxWebSocketConnection(mainWebSocketServer);
@@ -347,6 +348,7 @@ if (ENABLE_OUTBOUND_CAMPAIGN) {
             const projectInstance = await Project.initOutboundProject(payload.project);
             activeProjects.set(payload.project.projectId, projectInstance);
             projectInstance.setBroadcastWebSocket(mainWebSocketServer);
+            projectInstance.setOnCompleteStop(() => activeProjects.delete(payload.project.projectId));
             await projectInstance.create3cxWebSocketConnection(mainWebSocketServer);
             break;
 
