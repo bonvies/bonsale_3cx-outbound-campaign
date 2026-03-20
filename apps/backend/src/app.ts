@@ -20,6 +20,7 @@ import { WebSocketServer } from 'ws';
 // - CallListManager   : 管理各專案的撥號名單（Redis 中的通話佇列）
 // - Project           : 單一外播專案的核心類別（3CX 連線、撥號、狀態追蹤）
 import { router as bonsaleRouter, clientWsWebHook } from './features/outbound-campaign/routes/bonsale';
+import { createOutboundRouter } from './features/outbound-campaign/routes/outbound';
 import { initRedis, closeRedis } from './features/outbound-campaign/services/redis';
 import { broadcastAllProjects, broadcastError } from './features/outbound-campaign/components/broadcast';
 import { ProjectManager } from './features/outbound-campaign/class/projectManager';
@@ -92,12 +93,44 @@ app.use(morgan('dev'));                         // 輸出 HTTP 請求日誌
 app.use(express.json({ limit: '10mb' }));      // 解析 JSON body（限 10MB）
 app.use(express.urlencoded({ extended: true })); // 解析 URL-encoded form data
 
+// ─────────────────────────────────────────────────────────────────────────────
+// HTTP Server & WebSocket 基礎建設
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 將 Express 包裝成 Node.js HTTP Server，以便同時掛載 WebSocket
+const httpServer = createHttpServer(app);
+
+/**
+ * 主要 WebSocket 服務器（noServer 模式）
+ *
+ * noServer: true 表示不自行監聽 port，改由 httpServer 的 'upgrade' 事件
+ * 手動分流，讓同一個 port 同時服務 HTTP 和 WebSocket。
+ * 前端儀表板透過此 WebSocket 接收即時外播狀態更新。
+ */
+const mainWebSocketServer = new WebSocketServer({ noServer: true });
+
+/**
+ * 活躍外播專案的實例映射表
+ *
+ * key   : projectId（專案唯一識別碼）
+ * value : Project 實例（持有 3CX WebSocket 連線與撥號狀態）
+ *
+ * 用途：前端發送 stopOutbound 事件時，從此 Map 取得實例並正確關閉連線。
+ * 注意：此為記憶體狀態，服務器重啟後會清空，需透過 recoverActiveProjects() 重建。
+ */
+const activeProjects = new Map<string, Project>();
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 路由掛載（依功能開關決定是否啟用）
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.use('/api/config', configRouter);  // 功能設定 API（無條件掛載，前端啟動時需要）
 
 if (ENABLE_OUTBOUND_CAMPAIGN) {
   // 自動外播 API：/api/bonsale/*
   app.use('/api/bonsale', bonsaleRouter);
+  // 外播控制 HTTP API：/api/outbound/*（供外部系統呼叫，等同 WebSocket startOutbound/stopOutbound）
+  app.use('/api/outbound', createOutboundRouter(activeProjects, mainWebSocketServer));
 }
 if (ENABLE_CALL_SCHEDULE) {
   // 語音通知排程 API：/api/call-schedule/*
@@ -124,22 +157,6 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HTTP Server & WebSocket 基礎建設
-// ─────────────────────────────────────────────────────────────────────────────
-
-// 將 Express 包裝成 Node.js HTTP Server，以便同時掛載 WebSocket
-const httpServer = createHttpServer(app);
-
-/**
- * 主要 WebSocket 服務器（noServer 模式）
- *
- * noServer: true 表示不自行監聽 port，改由 httpServer 的 'upgrade' 事件
- * 手動分流，讓同一個 port 同時服務 HTTP 和 WebSocket。
- * 前端儀表板透過此 WebSocket 接收即時外播狀態更新。
- */
-const mainWebSocketServer = new WebSocketServer({ noServer: true });
 
 /**
  * WebSocket 升級請求分流
@@ -172,17 +189,6 @@ httpServer.on('upgrade', (request, socket, head) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // 自動外播 (Outbound Campaign)
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 活躍外播專案的實例映射表
- *
- * key   : projectId（專案唯一識別碼）
- * value : Project 實例（持有 3CX WebSocket 連線與撥號狀態）
- *
- * 用途：前端發送 stopOutbound 事件時，從此 Map 取得實例並正確關閉連線。
- * 注意：此為記憶體狀態，服務器重啟後會清空，需透過 recoverActiveProjects() 重建。
- */
-const activeProjects = new Map<string, Project>();
 
 /**
  * 自動恢復之前的活躍外播專案
