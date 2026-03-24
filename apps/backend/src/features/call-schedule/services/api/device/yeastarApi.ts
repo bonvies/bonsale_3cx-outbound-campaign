@@ -1,6 +1,10 @@
+import https from 'https';
 import { ApiResult, IPhoneApiService } from '../phoneApiService';
 import { TokenResponseType, callDialType } from '../../../types/api/yeastarApi';
 import axios from 'axios';
+
+// Yeastar 設備使用自簽憑證，允許跳過驗證
+const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 const YEASTAR_API_HOST = process.env.YEASTAR_API_HOST;
 const YEASTAR_API_PATH = process.env.YEASTAR_API_PATH;
@@ -13,9 +17,8 @@ if (!YEASTAR_PASSWORD) throw new Error('[yeastarApi] 環境變數 YEASTAR_PASSWO
 
 const axiosYeastarInstance = axios.create({
   baseURL: YEASTAR_API_HOST + YEASTAR_API_PATH,
-  headers: {
-    'User-Agent': 'OpenAPI',
-  },
+  headers: { 'User-Agent': 'OpenAPI' },
+  httpsAgent,
 });
 
 let accessToken: string | null = null;
@@ -43,6 +46,14 @@ function scheduleTokenRefresh(tokenData: TokenResponseType): void {
     const newTokenData = await refreshToken(tokenData.refresh_token);
     scheduleTokenRefresh(newTokenData);
   }, tokenData.access_token_expire_time * 1000);
+}
+
+export function getYeastarAccessToken(): string | null {
+  return accessToken;
+}
+
+export function getYeastarApiHost(): string {
+  return YEASTAR_API_HOST!;
 }
 
 export const yeastarDevice: IPhoneApiService = {
