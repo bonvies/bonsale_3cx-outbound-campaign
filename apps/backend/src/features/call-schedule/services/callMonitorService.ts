@@ -1,7 +1,7 @@
 import http from 'http';
 import schedule from 'node-schedule';
 import { getDatabase } from './database';
-import { mackeCall } from './api/newRockApi';
+import { phoneApiService } from './api/phoneApiService';
 import { logWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 
 /**
@@ -110,7 +110,7 @@ async function handleBye(ext: string): Promise<void> {
         `🔄 [CallMonitor] 執行第 ${nextRetryCount}/${call.maxRetries} 次重試 scheduleId=${call.scheduleId} ext=${ext}`
       );
       try {
-        const result = await mackeCall(call.from, ext);
+        const result = await phoneApiService.makeCall(call.from, ext);
         if (!result.success) {
           errorWithTimestamp(`[CallMonitor] 重試撥打失敗:`, result.error);
           updateStatus(call.scheduleId, '錯誤', new Date().toISOString());
