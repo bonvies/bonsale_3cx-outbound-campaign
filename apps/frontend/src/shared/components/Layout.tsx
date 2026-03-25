@@ -74,7 +74,7 @@ export default function Layout() {
           pointerEvents: 'none',
         }}
       >
-        v1.0.6
+        v2.0.0
       </Box>
     </Box>
   );
