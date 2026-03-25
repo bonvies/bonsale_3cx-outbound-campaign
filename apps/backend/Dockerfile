@@ -29,7 +29,7 @@ RUN pnpm run build
 
 # Build backend directly with TypeScript compiler
 WORKDIR /app/apps/backend
-RUN npx tsc
+RUN pnpm build
 
 # Expose the port
 EXPOSE 4020
