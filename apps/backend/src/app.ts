@@ -36,6 +36,7 @@ import callScheduleRouter from './features/call-schedule/routes/callSchedule';
 import { initDatabase } from './features/call-schedule/services/database';
 import { startCallMonitorServer } from './features/call-schedule/services/callMonitorService';
 import { recoverPendingSchedules } from './features/call-schedule/services/callScheduleService';
+import { phoneApiService } from './features/call-schedule/services/api/phoneApiService';
 
 // FIAS (Front desk Information and Administration System)
 // - 接收飯店 PMS 系統透過 TCP 傳送的房客資訊，觸發語音通知撥號
@@ -406,9 +407,11 @@ httpServer.listen(PORT, async () => {
     if (ENABLE_CALL_SCHEDULE) { // 只有在語音通知功能啟用時才初始化資料庫與啟動相關服務
       // 初始化 SQLite 資料庫，用於儲存語音通知排程設定
       await initDatabase();
+      // 初始化電話設備（部分設備需要取得 token 或建立連線，例如 Yeastar）
+      await phoneApiService.init?.();
       // 重新載入服務器重啟前尚未執行的排程任務
       recoverPendingSchedules();
-      // 啟動輪詢 NewRock OM API 的背景監控，追蹤通話撥出結果
+      // 啟動輪詢 OM API 的背景監控，追蹤通話撥出結果
       startCallMonitorServer();
     }
 

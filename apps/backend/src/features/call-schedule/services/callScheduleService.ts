@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import schedule from 'node-schedule';
 import { formatInTimeZone } from 'date-fns-tz';
 import { getDatabase } from './database';
-import { mackeCall } from './api/newRockApi';
+import { phoneApiService } from './api/phoneApiService';
 import { registerCall, cancelScheduleJobs } from './callMonitorService';
 import { getBonsaleCompanySys } from '@shared-local/services/api/bonsale';
 
@@ -104,7 +104,7 @@ function scheduleCallJob(
   schedule.scheduleJob(id, jobDate, async () => {
     console.log(`[CallScheduleService] Executing job ${id} at ${new Date().toISOString()}`);
     try {
-      const result = await mackeCall(fromExtension, extension);
+      const result = await phoneApiService.makeCall(fromExtension, extension);
       if (!result.success) {
         console.error(`[CallScheduleService] Call failed for ${id}:`, result.error);
         db.prepare(`UPDATE call_schedules SET callStatus = '錯誤' WHERE id = ?`).run(id);
