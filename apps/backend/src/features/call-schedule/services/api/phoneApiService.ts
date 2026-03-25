@@ -1,12 +1,6 @@
 import { newRockDevice } from './device/newRockApi';
 import { yeastarDevice } from './device/yeastarApi';
 
-// 目前只支援兩種設備：NewRock / Yeastar
-// 透過環境變數 TELEPHONE_EQUIPMENT 切換，必填
-const TELEPHONE_EQUIPMENT = process.env.TELEPHONE_EQUIPMENT;
-if (!TELEPHONE_EQUIPMENT) throw new Error('[phoneApiService] 環境變數 TELEPHONE_EQUIPMENT 未設定（NewRock / Yeastar）');
-if (TELEPHONE_EQUIPMENT !== 'NewRock' && TELEPHONE_EQUIPMENT !== 'Yeastar') throw new Error(`[phoneApiService] TELEPHONE_EQUIPMENT 值無效：「${TELEPHONE_EQUIPMENT}」，只接受 NewRock 或 Yeastar`);
-
 // ─────────────────────────────────────────────
 // Interface
 // ─────────────────────────────────────────────
@@ -36,4 +30,14 @@ const devices: Record<'NewRock' | 'Yeastar', IPhoneApiService> = {
   Yeastar: yeastarDevice,
 };
 
-export const phoneApiService: IPhoneApiService = devices[TELEPHONE_EQUIPMENT];
+function getDevice(): IPhoneApiService {
+  const raw = process.env.TELEPHONE_EQUIPMENT;
+  if (!raw) throw new Error('[phoneApiService] 環境變數 TELEPHONE_EQUIPMENT 未設定（NewRock / Yeastar）');
+  if (raw !== 'NewRock' && raw !== 'Yeastar') throw new Error(`[phoneApiService] TELEPHONE_EQUIPMENT 值無效：「${raw}」，只接受 NewRock 或 Yeastar`);
+  return devices[raw];
+}
+
+export const phoneApiService: IPhoneApiService = {
+  init: () => getDevice().init?.() ?? Promise.resolve(),
+  makeCall: (from, to) => getDevice().makeCall(from, to),
+};
