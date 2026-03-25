@@ -6,6 +6,7 @@
 
 ## ✨ 核心特色
 
+### 自動外播（Outbound Campaign）
 - ✅ 支援同時執行多個外撥活動
 - ✅ 3CX WebSocket 實時監聽電話狀態
 - ✅ 與 Bonsale CRM 雙向整合
@@ -14,6 +15,13 @@
 - ✅ 時間排程與限制支援
 - ✅ 撥打自動恢復機制
 - ✅ 實時儀表板監控
+
+### 自動語音通知（Call Schedule）
+- ✅ 排程自動撥打語音通知
+- ✅ 支援 NewRock / Yeastar 兩種電話設備（透過環境變數切換，無需改程式碼）
+- ✅ 未接聽自動重試（可設定次數與間隔）
+- ✅ Yeastar：REST API + WebSocket CDR 事件監聽 + 自動 Token 刷新
+- ✅ NewRock：HTTP 1.0 XML API + Push 事件接收
 
 ## 🏗️ 專案架構
 
@@ -97,6 +105,29 @@ ADMIN_3CX_GRANT_TYPE=client_credentials
 
 # Redis 連接
 REDIS_URL=redis://redis:6379
+```
+
+### Call Schedule 專屬環境變數（`ENABLE_CALL_SCHEDULE=true` 時必填）
+
+```bash
+# 電話設備選擇（必填，無預設值）
+TELEPHONE_EQUIPMENT=NewRock     # 或 Yeastar
+
+# OM 事件監聽 Port
+OM_MONITOR_PORT=4022
+
+# 外播主叫分機號碼
+OM_CALL_FROM_EXTENSION=9038
+
+# NewRock 設定（TELEPHONE_EQUIPMENT=NewRock 時必填）
+NEW_ROCK_API_HOST=<YOUR_NEW_ROCK_API_HOST>
+NEW_ROCK_API_PATH=/xml
+
+# Yeastar 設定（TELEPHONE_EQUIPMENT=Yeastar 時必填）
+YEASTAR_API_HOST=<YOUR_YEASTAR_API_HOST>
+YEASTAR_API_PATH=/openapi/v1.0
+YEASTAR_USERNAME=<YOUR_YEASTAR_USERNAME>
+YEASTAR_PASSWORD=<YOUR_YEASTAR_PASSWORD>
 ```
 
 ## 🚀 快速開始
@@ -242,10 +273,11 @@ docker-compose -f docker-compose.prod.yml up -d backend
 |------|------|
 | **前端** | React + Vite + TypeScript |
 | **後端** | Node.js + Express + TypeScript |
-| **資料庫** | Redis (快取與狀態管理) |
+| **資料庫** | Redis（外播狀態快取）+ SQLite / better-sqlite3（語音通知排程） |
 | **容器化** | Docker + Docker Compose |
-| **通訊** | WebSocket (實時更新) + REST API |
+| **通訊** | WebSocket（實時更新）+ REST API |
 | **託管** | Google Cloud Platform (GCP) |
+| **電話設備** | NewRock OM API / Yeastar OpenAPI（可切換）|
 
 ## 🐛 故障排查
 
