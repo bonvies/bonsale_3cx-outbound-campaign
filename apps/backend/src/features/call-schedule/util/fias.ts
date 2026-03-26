@@ -1,5 +1,5 @@
 import net from 'net';
-import { FiasConn, FiasMessage } from '../types/fias/fiasTypes';
+import { PmsMessage as FiasMessage, PmsConn as FiasConn } from '../types/pms/pmsTypes';
 // FIAS 協定使用這兩個特殊 byte 包住每則訊息，作為「信封」
 // STX (Start of Text) = byte 0x02，標記訊息開頭
 // ETX (End of Text)   = byte 0x03，標記訊息結尾

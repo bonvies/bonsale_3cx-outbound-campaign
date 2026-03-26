@@ -38,12 +38,9 @@ import { startCallMonitorServer } from './features/call-schedule/services/callMo
 import { recoverPendingSchedules } from './features/call-schedule/services/callScheduleService';
 import { phoneApiService } from './features/call-schedule/services/api/phoneApiService';
 
-// FIAS (Front desk Information and Administration System)
-// - 接收飯店 PMS 系統透過 TCP 傳送的房客資訊，觸發語音通知撥號
-// - fiasHandler    : 解析並處理 FIAS 訊息
-// - createFiasServer: 建立 TCP 伺服器監聽 FIAS 連線
-import fiasHandler from './features/call-schedule/components/fiasHandler';
-import { createServer as createFiasServer } from './features/call-schedule/util/fias';
+// PMS TCP Server（語音通知功能使用）
+// - 根據 PMS_PROTOCOL 環境變數切換協定（FIAS / NortelPMS）
+import { startPmsServer } from './features/call-schedule/services/pmsServer';
 
 // 共用設定 API
 import configRouter from './shared/routes/config';
@@ -64,7 +61,7 @@ dotenv.config();
  * 在 .env 中明確填寫 'true' 或 'false'：
  *   ENABLE_OUTBOUND_CAMPAIGN=true   → 啟用自動外播（連 Redis、建 WebSocket）
  *   ENABLE_OUTBOUND_CAMPAIGN=false  → 停用自動外播
- *   ENABLE_CALL_SCHEDULE=true       → 啟用語音通知（建 SQLite、啟動 FIAS TCP）
+ *   ENABLE_CALL_SCHEDULE=true       → 啟用語音通知（建 SQLite、啟動 PMS TCP）
  *   ENABLE_CALL_SCHEDULE=false      → 停用語音通知
  */
 if (process.env.ENABLE_OUTBOUND_CAMPAIGN === undefined) {
@@ -78,8 +75,8 @@ if (process.env.ENABLE_CALL_SCHEDULE === undefined) {
 const ENABLE_OUTBOUND_CAMPAIGN = process.env.ENABLE_OUTBOUND_CAMPAIGN === 'true';
 const ENABLE_CALL_SCHEDULE      = process.env.ENABLE_CALL_SCHEDULE      === 'true';
 
-const PORT      = process.env.HTTP_PORT || 4020; // HTTP / WebSocket 主服務埠
-const FIAS_PORT = process.env.FIAS_PORT || 4021; // FIAS TCP 伺服器埠
+const PORT     = process.env.HTTP_PORT || 4020; // HTTP / WebSocket 主服務埠
+const PMS_PORT = parseInt(process.env.PMS_PORT || '4021', 10); // PMS TCP 伺服器埠
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Express 應用程式設定
@@ -469,28 +466,22 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FIAS TCP 伺服器（語音通知功能使用）
+// PMS TCP 伺服器（語音通知功能使用）
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * FIAS (Front desk Information and Administration System) TCP 伺服器
+ * PMS TCP 伺服器
  *
- * 監聽飯店 PMS 系統透過 TCP 傳入的 FIAS 訊息（如房客 Check-in / Wake-up Call 請求）。
- * 收到訊息後交由 fiasHandler 解析並觸發對應的語音通知撥號。
+ * 監聽飯店 PMS 系統透過 TCP 傳入的訊息（叫醒、Check-in 等）。
+ * 根據 PMS_PROTOCOL 環境變數切換協定：
+ *   FIAS      → FIAS 協定（STX/ETX framing）
+ *   NortelPMS → Nortel PMS 協定（純文字指令）
  *
- * 僅在 ENABLE_CALL_SCHEDULE=true 時啟動（語音通知功能的一部分）。
- * 監聽埠由 FIAS_PORT 環境變數控制，預設 4021。
+ * 僅在 ENABLE_CALL_SCHEDULE=true 時啟動。
+ * 監聽埠由 PMS_PORT 環境變數控制，預設 4021。
  */
-if (ENABLE_CALL_SCHEDULE) { // 只有在語音通知功能啟用時才啟動 FIAS TCP 伺服器
-  const fiasServer = createFiasServer(async (msg, conn) => {
-    console.log('--- FIAS TCP 服務器收到訊息 ---');
-    console.log('訊息內容:', msg);
-    fiasHandler(msg, conn);
-  });
-
-  fiasServer.listen(FIAS_PORT, () => {
-    logWithTimestamp({ isForce: true }, `📡 FIAS TCP server is running on port ${FIAS_PORT}`);
-  });
+if (ENABLE_CALL_SCHEDULE) {
+  startPmsServer(PMS_PORT);
 }
 
 export default app;

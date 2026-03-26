@@ -1,5 +1,5 @@
 import { fromZonedTime } from 'date-fns-tz';
-import { FiasConn, FiasMessage } from '@call-schedule/types/fias/fiasTypes';
+import { PmsMessage as FiasMessage, PmsConn as FiasConn } from '@call-schedule/types/pms/pmsTypes';
 import { getDatabase } from '@call-schedule/services/database';
 import { createCallSchedule, deleteCallSchedule } from '@call-schedule/services/callScheduleService';
 import { getBonsaleCompanySys } from '@shared-local/services/api/bonsale';
@@ -21,6 +21,11 @@ async function parseFiasDate(ti: string, dt?: string): Promise<Date> {
 
   let year: number, month: number, day: number;
 
+  // Date.UTC(y, m, d, h, min) 建立的 Date，UTC 值即為填入的數字，不受本機時區影響
+  // fromZonedTime 讀取 UTC 值後視為指定時區的當地時間，正確轉換為 UTC
+  const toUtc = (y: number, m: number, d: number) =>
+    fromZonedTime(new Date(Date.UTC(y, m, d, hour, minute, 0)), timezone);
+
   if (dt && dt.length >= 6) {
     // FIAS DT 格式：YYMMDD
     year  = 2000 + parseInt(dt.substring(0, 2), 10);
@@ -33,13 +38,12 @@ async function parseFiasDate(ti: string, dt?: string): Promise<Date> {
     month = now.getMonth();
     day   = now.getDate();
 
-    const candidate = fromZonedTime(new Date(year, month, day, hour, minute, 0), timezone);
-    if (candidate <= new Date()) {
+    if (toUtc(year, month, day) <= new Date()) {
       day += 1;
     }
   }
 
-  return fromZonedTime(new Date(year, month, day, hour, minute, 0), timezone);
+  return toUtc(year, month, day);
 }
 
 /**
