@@ -21,10 +21,10 @@ async function parseFiasDate(ti: string, dt?: string): Promise<Date> {
 
   let year: number, month: number, day: number;
 
-  // Date.UTC(y, m, d, h, min) 建立的 Date，UTC 值即為填入的數字，不受本機時區影響
-  // fromZonedTime 讀取 UTC 值後視為指定時區的當地時間，正確轉換為 UTC
+  // new Date(y, m, d, h, min) 以本機時區建立日期，fromZonedTime 讀取其本機時間值，
+  // 視為指定時區的當地時間並轉換為 UTC
   const toUtc = (y: number, m: number, d: number) =>
-    fromZonedTime(new Date(Date.UTC(y, m, d, hour, minute, 0)), timezone);
+    fromZonedTime(new Date(y, m, d, hour, minute, 0), timezone);
 
   if (dt && dt.length >= 6) {
     // FIAS DT 格式：YYMMDD
