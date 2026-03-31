@@ -3,9 +3,15 @@ import { PmsMessage as FiasMessage, PmsConn as FiasConn } from '@call-schedule/t
 import { getDatabase } from '@call-schedule/services/database';
 import { createCallSchedule, deleteCallSchedule } from '@call-schedule/services/callScheduleService';
 import { registerFinalResultCallback } from '@call-schedule/services/callMonitorService';
+import { getActiveFiasConn } from '@call-schedule/util/fias';
 import { getBonsaleCompanySys } from '@shared-local/services/api/bonsale';
 import { logWithTimestamp, warnWithTimestamp } from '@/shared/util/timestamp';
 
+// ─────────────────────────────────────────────
+// 時區 / 日期工具
+// ─────────────────────────────────────────────
+
+/** 取得飯店時區（來自 Bonsale 設定），預設 UTC */
 async function getFiasTimezone(): Promise<string> {
   const sys = await getBonsaleCompanySys();
   return sys?.data?.timezoneIANA ?? 'UTC';
@@ -50,9 +56,29 @@ function parseFiasDateWithTimezone(ti: string, timezone: string, dt?: string): D
   return toUtc(year, month, day);
 }
 
-/**
- * 根據 extension + 預定時間（UTC ISO）找尚未完成的 call_schedule 記錄
- */
+/** extension → roomNumber（去掉環境變數設定的分機前綴） */
+function toRoomNumber(extension: string): string {
+  const prefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
+  return prefix && extension.startsWith(prefix)
+    ? extension.slice(prefix.length)
+    : extension;
+}
+
+/** UTC ISO → FIAS DA（YYMMDD）+ TI（HHMM），以飯店本地時區表示 */
+async function toFiasDateTime(dateUtcIso: string): Promise<{ da: string; ti: string }> {
+  const timezone = await getFiasTimezone();
+  const date     = new Date(dateUtcIso);
+  return {
+    da: formatInTimeZone(date, timezone, 'yyMMdd'),
+    ti: formatInTimeZone(date, timezone, 'HHmm'),
+  };
+}
+
+// ─────────────────────────────────────────────
+// DB 查詢工具
+// ─────────────────────────────────────────────
+
+/** 根據 extension + 預定時間（UTC ISO）找尚未完成的 call_schedule 記錄 */
 function findScheduleId(extension: string, dateIso: string): string | null {
   const db = getDatabase();
   const row = db.prepare(
@@ -65,7 +91,51 @@ function findScheduleId(extension: string, dateIso: string): string | null {
 }
 
 // ─────────────────────────────────────────────
-// 共用業務邏輯
+// 主動通知 PMS（設備 → PMS 方向）
+//
+// FIAS WR/WC 是雙向指令，當用戶從我們的系統建立或取消叫醒時，
+// 需要主動送 WR/WC 給 PMS 保持雙方同步。
+//
+// 注意：以下函式只供 REST route 呼叫，不可在接收 PMS 訊息的路徑中呼叫，
+// 否則會造成迴圈（PMS 送 WR → 我們存 DB → 又送 WR 回去）。
+// ─────────────────────────────────────────────
+
+/**
+ * 從我們的系統建立叫醒排程時，主動通知 PMS（送 WR）。
+ * 若 PMS_PROTOCOL 不是 FIAS 或目前無 PMS 連線，靜默跳過。
+ */
+export async function notifyFiasWakeupCreate(extension: string, dateUtcIso: string): Promise<void> {
+  if (process.env.PMS_PROTOCOL !== 'FIAS') return;
+  const conn = getActiveFiasConn();
+  if (!conn) {
+    warnWithTimestamp('[FIAS] 無 active 連線，略過 WR 通知');
+    return;
+  }
+  const roomNumber = toRoomNumber(extension);
+  const { da, ti } = await toFiasDateTime(dateUtcIso);
+  conn.send(`WR|RN${roomNumber}|DA${da}|TI${ti}|`);
+  logWithTimestamp(`[FIAS] WR 送出（主動通知）：房間=${roomNumber} DA=${da} TI=${ti}`);
+}
+
+/**
+ * 從我們的系統取消叫醒排程時，主動通知 PMS（送 WC）。
+ * 若 PMS_PROTOCOL 不是 FIAS 或目前無 PMS 連線，靜默跳過。
+ */
+export async function notifyFiasWakeupClear(extension: string, dateUtcIso: string): Promise<void> {
+  if (process.env.PMS_PROTOCOL !== 'FIAS') return;
+  const conn = getActiveFiasConn();
+  if (!conn) {
+    warnWithTimestamp('[FIAS] 無 active 連線，略過 WC 通知');
+    return;
+  }
+  const roomNumber = toRoomNumber(extension);
+  const { da, ti } = await toFiasDateTime(dateUtcIso);
+  conn.send(`WC|RN${roomNumber}|DA${da}|TI${ti}|`);
+  logWithTimestamp(`[FIAS] WC 送出（主動通知）：房間=${roomNumber} DA=${da} TI=${ti}`);
+}
+
+// ─────────────────────────────────────────────
+// 接收 PMS 訊息的業務邏輯（PMS → 設備方向）
 // ─────────────────────────────────────────────
 
 async function handleWakeUpCreate(
@@ -133,7 +203,7 @@ async function handleWakeUpDelete(
 }
 
 // ─────────────────────────────────────────────
-// 主 Handler
+// 主 Handler（入口）
 // ─────────────────────────────────────────────
 export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Promise<void> {
   switch (msg.type) {
@@ -143,7 +213,7 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       // 設備必須回傳 LD（Link Description）告知自身日期時間，啟動初始化序列
       // ⚠️ 注意：回傳的是 LD，不是 LS；舊版此處誤寫為 'LS|...'
       const now = new Date();
-      const yy  = String(now.getFullYear()).slice(-2);         // 年份後兩位
+      const yy  = String(now.getFullYear()).slice(-2);
       const mm  = String(now.getMonth() + 1).padStart(2, '0');
       const dd  = String(now.getDate()).padStart(2, '0');
       const hh  = String(now.getHours()).padStart(2, '0');
@@ -163,13 +233,13 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       conn.send('LA');
       break;
 
-    // ── WR：叫醒預約 ──────────────────────────
+    // ── WR：叫醒預約（PMS → 設備）────────────
     case 'WR':
       await handleWakeUpCreate(msg.fields, conn);
       break;
 
-    // ── WC：取消叫醒（Wakeup Clear）─────────
-    // 注意：WC 在此是 PMS → 設備的指令，不是設備的回應
+    // ── WC：取消叫醒（PMS → 設備）────────────
+    // 注意：此處的 WC 是 PMS 送來的指令，不是我們的回應
     case 'WC':
       await handleWakeUpDelete(msg.fields);
       break;
