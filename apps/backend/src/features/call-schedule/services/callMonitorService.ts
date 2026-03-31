@@ -1,6 +1,6 @@
 import { newRockCallMonitor } from './monitor/device/NewRockCallMonitorService';
 import { yeastarCallMonitor } from './monitor/device/YeastarCallMonitorService';
-import { RegisterCallOptions } from './monitor/callMonitorCore';
+import { RegisterCallOptions, registerFinalResultCallback, notifyFinalResult } from './monitor/callMonitorCore';
 
 // ─────────────────────────────────────────────
 // Interface
@@ -37,3 +37,4 @@ export const cancelScheduleJobs = (
 ) => callMonitor.cancelScheduleJobs(scheduleId, scheduledJobs);
 
 export type { RegisterCallOptions };
+export { registerFinalResultCallback, notifyFinalResult };

@@ -1,9 +1,15 @@
-import { fromZonedTime } from 'date-fns-tz';
+import { fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { PmsMessage as FiasMessage, PmsConn as FiasConn } from '@call-schedule/types/pms/pmsTypes';
 import { getDatabase } from '@call-schedule/services/database';
 import { createCallSchedule, deleteCallSchedule } from '@call-schedule/services/callScheduleService';
+import { registerFinalResultCallback } from '@call-schedule/services/callMonitorService';
 import { getBonsaleCompanySys } from '@shared-local/services/api/bonsale';
 import { logWithTimestamp, warnWithTimestamp } from '@/shared/util/timestamp';
+
+async function getFiasTimezone(): Promise<string> {
+  const sys = await getBonsaleCompanySys();
+  return sys?.data?.timezoneIANA ?? 'UTC';
+}
 
 /**
  * FIAS 協定沒有前端，PMS 送來的是飯店當地時間（TI/DT），
@@ -13,19 +19,16 @@ import { logWithTimestamp, warnWithTimestamp } from '@/shared/util/timestamp';
  * FIAS DT（YYMMDD）+ TI（HHMM）→ 飯店時區 → UTC Date
  * 若 DT 未提供，預設使用當天；若時間已過則排明天
  */
-async function parseFiasDate(ti: string, dt?: string): Promise<Date> {
-  const bonsaleCompanySys = await getBonsaleCompanySys();
-  const timezone = bonsaleCompanySys?.data?.timezoneIANA ?? 'UTC';
-
+function parseFiasDateWithTimezone(ti: string, timezone: string, dt?: string): Date {
   const hour   = parseInt(ti.substring(0, 2), 10);
   const minute = parseInt(ti.substring(2, 4), 10);
-
-  let year: number, month: number, day: number;
 
   // new Date(y, m, d, h, min) 以本機時區建立日期，fromZonedTime 讀取其本機時間值，
   // 視為指定時區的當地時間並轉換為 UTC
   const toUtc = (y: number, m: number, d: number) =>
     fromZonedTime(new Date(y, m, d, hour, minute, 0), timezone);
+
+  let year: number, month: number, day: number;
 
   if (dt && dt.length >= 6) {
     // FIAS DT 格式：YYMMDD
@@ -67,6 +70,7 @@ function findScheduleId(extension: string, dateIso: string): string | null {
 
 async function handleWakeUpCreate(
   fields: Record<string, string>,
+  conn: FiasConn,
   logPrefix = 'WR',
 ): Promise<void> {
   const roomNumber       = fields.RN;
@@ -79,7 +83,8 @@ async function handleWakeUpCreate(
   const extension       = extensionPrefix + roomNumber;
 
   // FIAS 規範：WR 不需要回應，叫醒執行結果另由 WA 送出
-  const jobDate = await parseFiasDate(timeStr, dateStr);
+  const timezone = await getFiasTimezone();
+  const jobDate  = parseFiasDateWithTimezone(timeStr, timezone, dateStr);
 
   const newId = createCallSchedule({
     audioFile: '',
@@ -89,6 +94,15 @@ async function handleWakeUpCreate(
     retryInterval: retryIntervalMin,
     maxRetries,
     notes: `FIAS ${logPrefix} - 房間 ${roomNumber}`,
+  });
+
+  // 登記 WA callback：通話結束後由 callMonitorCore 觸發，回報結果給 PMS
+  // DA 以飯店本地時間（YYMMDD）表示；TI 原樣保留（per FIAS spec：不得改為系統時間）
+  const da = dateStr ?? formatInTimeZone(jobDate, timezone, 'yyMMdd');
+  registerFinalResultCallback(newId, (status) => {
+    const as = status === 'answered' ? 'OK' : status === 'not_answered' ? 'NA' : 'ER';
+    conn.send(`WA|RN${roomNumber}|DA${da}|TI${timeStr}|AS${as}|`);
+    logWithTimestamp(`[FIAS] WA 送出：房間=${roomNumber} DA=${da} TI=${timeStr} AS=${as}`);
   });
 
   logWithTimestamp(`[FIAS] ${logPrefix} 預約叫醒：房間=${roomNumber} 分機=${extension} 時間=${jobDate.toISOString()} retryInterval=${retryIntervalMin}min maxRetries=${maxRetries} id=${newId}`);
@@ -106,7 +120,8 @@ async function handleWakeUpDelete(
   const extension       = extensionPrefix + roomNumber;
 
   // FIAS 規範：WC 不需要回應
-  const jobDate    = await parseFiasDate(timeStr, dateStr);
+  const timezone   = await getFiasTimezone();
+  const jobDate    = parseFiasDateWithTimezone(timeStr, timezone, dateStr);
   const scheduleId = findScheduleId(extension, jobDate.toISOString());
 
   if (scheduleId) {
@@ -150,7 +165,7 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
 
     // ── WR：叫醒預約 ──────────────────────────
     case 'WR':
-      await handleWakeUpCreate(msg.fields);
+      await handleWakeUpCreate(msg.fields, conn);
       break;
 
     // ── WC：取消叫醒（Wakeup Clear）─────────
@@ -165,7 +180,7 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
     // 解析後 fields 會帶有 WR 或 WC 這個空值 key 來標記內層類型
     case 'LR': {
       if ('WR' in msg.fields) {
-        await handleWakeUpCreate(msg.fields, 'LR/WR');
+        await handleWakeUpCreate(msg.fields, conn, 'LR/WR');
       } else if ('WC' in msg.fields) {
         await handleWakeUpDelete(msg.fields, 'LR/WC');
       } else {

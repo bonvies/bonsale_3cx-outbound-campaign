@@ -26,12 +26,35 @@ export type RegisterCallOptions = {
   retryIntervalMs: number;
 };
 
+export type FinalResultStatus = 'answered' | 'not_answered' | 'error';
+export type FinalResultCallback = (status: FinalResultStatus) => void;
+
 // ─────────────────────────────────────────────
 // State
 // ─────────────────────────────────────────────
 
 // key = extension（被叫分機號碼）
 const pendingCalls = new Map<string, PendingCall>();
+
+// key = scheduleId，供外部（如 FIAS）登記通話結果回調
+const finalResultCallbacks = new Map<string, FinalResultCallback>();
+
+// ─────────────────────────────────────────────
+// Final result callback helpers
+// ─────────────────────────────────────────────
+
+/** 登記通話最終結果回調（e.g. FIAS 用來送 WA） */
+export function registerFinalResultCallback(scheduleId: string, cb: FinalResultCallback): void {
+  finalResultCallbacks.set(scheduleId, cb);
+}
+
+/** 觸發並移除 callback；也可由外部直接呼叫（e.g. 撥打前就失敗的情況） */
+export function notifyFinalResult(scheduleId: string, status: FinalResultStatus): void {
+  const cb = finalResultCallbacks.get(scheduleId);
+  if (!cb) return;
+  finalResultCallbacks.delete(scheduleId);
+  cb(status);
+}
 
 // ─────────────────────────────────────────────
 // DB helper
@@ -73,6 +96,7 @@ export function handleAnswer(ext: string): void {
   call.answered = true;
   updateStatus(call.scheduleId, '已接聽', new Date().toISOString());
   pendingCalls.delete(ext);
+  notifyFinalResult(call.scheduleId, 'answered');
 }
 
 export async function handleBye(ext: string): Promise<void> {
@@ -95,6 +119,7 @@ export async function handleBye(ext: string): Promise<void> {
     logWithTimestamp(`[CallMonitor] 已達最大重試次數 (${call.maxRetries})，標記為未接聽`);
     updateStatus(call.scheduleId, '未接聽', new Date().toISOString());
     pendingCalls.delete(ext);
+    notifyFinalResult(call.scheduleId, 'not_answered');
     return;
   }
 
@@ -117,6 +142,7 @@ export async function handleBye(ext: string): Promise<void> {
         if (!result.success) {
           errorWithTimestamp(`[CallMonitor] 重試撥打失敗:`, result.error);
           updateStatus(call.scheduleId, '錯誤', new Date().toISOString());
+          notifyFinalResult(call.scheduleId, 'error');
           return;
         }
         updateStatus(call.scheduleId, '撥打中', new Date().toISOString());
@@ -131,6 +157,7 @@ export async function handleBye(ext: string): Promise<void> {
       } catch (err) {
         errorWithTimestamp(`[CallMonitor] 重試異常:`, err);
         updateStatus(call.scheduleId, '錯誤', new Date().toISOString());
+        notifyFinalResult(call.scheduleId, 'error');
       }
     }
   );

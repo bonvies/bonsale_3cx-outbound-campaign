@@ -3,7 +3,7 @@ import schedule from 'node-schedule';
 import { formatInTimeZone } from 'date-fns-tz';
 import { getDatabase } from './database';
 import { phoneApiService } from './api/phoneApiService';
-import { registerCall, cancelScheduleJobs } from './callMonitorService';
+import { registerCall, cancelScheduleJobs, notifyFinalResult } from './callMonitorService';
 import { getBonsaleCompanySys } from '@shared-local/services/api/bonsale';
 
 // ─────────────────────────────────────────────
@@ -108,6 +108,7 @@ function scheduleCallJob(
       if (!result.success) {
         console.error(`[CallScheduleService] Call failed for ${id}:`, result.error);
         db.prepare(`UPDATE call_schedules SET callStatus = '錯誤' WHERE id = ?`).run(id);
+        notifyFinalResult(id, 'error');
         return;
       }
       db.prepare(`UPDATE call_schedules SET callStatus = '撥打中' WHERE id = ?`).run(id);
@@ -115,6 +116,7 @@ function scheduleCallJob(
     } catch (err) {
       console.error(`[CallScheduleService] Job execution failed for ${id}:`, err);
       db.prepare(`UPDATE call_schedules SET callStatus = '錯誤' WHERE id = ?`).run(id);
+      notifyFinalResult(id, 'error');
     }
   });
 }
