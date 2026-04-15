@@ -76,9 +76,9 @@ if (process.env.ENABLE_CALL_SCHEDULE === undefined) {
   process.exit(1);
 }
 const ENABLE_OUTBOUND_CAMPAIGN = process.env.ENABLE_OUTBOUND_CAMPAIGN === 'true';
-const ENABLE_CALL_SCHEDULE      = process.env.ENABLE_CALL_SCHEDULE      === 'true';
+const ENABLE_CALL_SCHEDULE = process.env.ENABLE_CALL_SCHEDULE === 'true';
 
-const PORT      = process.env.HTTP_PORT || 4020; // HTTP / WebSocket 主服務埠
+const PORT = process.env.HTTP_PORT || 4020; // HTTP / WebSocket 主服務埠
 const FIAS_PORT = process.env.FIAS_PORT || 4021; // FIAS TCP 伺服器埠
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -225,11 +225,11 @@ async function recoverActiveProjects(): Promise<void> {
 
             // 重新建立 Project 實例（從 Redis 讀取的設定重新初始化）
             const projectInstance = await Project.initOutboundProject({
-              projectId:       savedProject.projectId,
-              callFlowId:      savedProject.callFlowId,
-              client_id:       savedProject.client_id,
-              client_secret:   savedProject.client_secret || '',
-              recurrence:      savedProject.recurrence,
+              projectId: savedProject.projectId,
+              callFlowId: savedProject.callFlowId,
+              client_id: savedProject.client_id,
+              client_secret: savedProject.client_secret || '',
+              recurrence: savedProject.recurrence,
               callRestriction: savedProject.callRestriction || []
             });
 
@@ -423,7 +423,7 @@ httpServer.listen(PORT, async () => {
       logWithTimestamp({ isForce: true }, `🔌 WebSocket server is running on port ${PORT}`);
       logWithTimestamp({ isForce: true }, `🖥️ Bonsale WebHook WebSocket is available on port ${PORT}/api/bonsale/webhook-ws`);
     }
-    logWithTimestamp({ isForce: true }, `ℹ️ Version: v2.0.1`);
+    logWithTimestamp({ isForce: true }, `ℹ️ Version: v2.0.2`);
 
     if (ENABLE_OUTBOUND_CAMPAIGN) { // 只有在自動外播功能啟用時才從 Redis 恢復外播專案
       // 從 Redis 恢復上次服務器關閉前仍在執行的外播專案
@@ -465,7 +465,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   }
 }
 
-process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // ─────────────────────────────────────────────────────────────────────────────

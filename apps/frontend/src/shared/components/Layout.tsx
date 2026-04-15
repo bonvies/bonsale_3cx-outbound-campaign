@@ -50,12 +50,12 @@ export default function Layout() {
       <Container
         maxWidth={false}
         sx={{
-          position:'relative',
+          position: 'relative',
           flex: 1,
-          display:'flex',
+          display: 'flex',
           flexDirection: 'column',
-          height:'100%',
-          overflowY:'hidden',
+          height: '100%',
+          overflowY: 'hidden',
           maxWidth: (theme) => theme.breakpoints.values.laptop,
           width: '100%'
         }}
@@ -74,7 +74,7 @@ export default function Layout() {
           pointerEvents: 'none',
         }}
       >
-        v2.0.1
+        v2.0.2
       </Box>
     </Box>
   );
