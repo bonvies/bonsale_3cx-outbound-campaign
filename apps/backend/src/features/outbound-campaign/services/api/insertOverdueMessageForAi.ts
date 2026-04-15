@@ -4,25 +4,30 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const host = process.env.HTTP_HOST_MESSAGE_FOR_AI;
+const post9000BasicAuth = process.env.POST_9000_BASIC_AUTH;
 
 if (!host) {
-  throw new Error('環境變數 HTTP_HOST_3CX 未定義，請檢查 .env 文件');
+  throw new Error('環境變數 HTTP_HOST_MESSAGE_FOR_AI 未定義，請檢查 .env 文件');
+}
+
+if (!post9000BasicAuth) {
+  throw new Error('環境變數 POST_9000_BASIC_AUTH 未定義，請檢查 .env 文件');
 }
 
 // AI 撥打所需的 API
-/* TODO:
-  為什麼要有這個 API ?
-  詳細原因我再去問 PY
+/* 
+  這是為 21 世紀 特別打造的 他們需要 post9000 來知道 AI 撥打的結果
+  但我們會先用 post9000Dummy 送到 PY 那邊再去 呼叫 post9000
 */
 export async function post9000Dummy(description: string, description2: string, phone: string): Promise<{ success: boolean; data?: any; error?: { errorCode: string; error: string } }> {
   try {
     const response = await axios.post(`${host}/InsertOverdueMessageForAi`, {
-        CaseNo: description,
-        Phone: phone,
-        ResultCode: "9000",
-        ContentText: "",
-        SourceUrl: description2
-      }, {
+      CaseNo: description,
+      Phone: phone,
+      ResultCode: "9000",
+      ContentText: "",
+      SourceUrl: description2
+    }, {
       headers: {
         Authorization: 'dummy',
       },
@@ -43,20 +48,20 @@ export async function post9000Dummy(description: string, description2: string, p
 }
 
 // AI 撥打所需的 API 2
-/* TODO:
-  為什麼要有這個 API ?
-  詳細原因我再去問 PY
+/* 
+  這是為 21 世紀 特別打造的 他們需要 post9000 來知道 AI 撥打的結果
+  但我們會先用 post9000Dummy 送到 PY 那邊再去 呼叫 post9000
 */
 export async function post9000(description: string, description2: string, phone: string): Promise<{ success: boolean; data?: any; error?: { errorCode: string; error: string } }> {
   try {
     const response = await axios.post(`${description2}/InsertOverdueMessageForAi`, {
-        CaseNo: description,
-        Phone: phone,
-        ResultCode: "9000",
-        ContentText: "",
-      }, {
+      CaseNo: description,
+      Phone: phone,
+      ResultCode: "9000",
+      ContentText: "",
+    }, {
       headers: {
-        Authorization: 'Basic gsdigu6445283jagdfstg',
+        Authorization: `Basic ${post9000BasicAuth}`,
       },
     });
     // 回傳 API 的回應
