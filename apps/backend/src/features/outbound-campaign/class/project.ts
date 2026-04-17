@@ -607,9 +607,12 @@ export default class Project {
             // 使用 throttled 版本的 outboundCall，並傳入快照
             // 注意：不 await，讓它在背景執行，避免在 WebSocket 事件處理器內造成死鎖
 
-            this.throttledOutboundCall(broadcastWs, eventEntity, false, false, participantSnapshot0)!.catch(error => {
-              errorWithTimestamp('case 0 觸發外撥邏輯時發生錯誤:', error);
-            });
+            const result0 = this.throttledOutboundCall(broadcastWs, eventEntity, false, false, participantSnapshot0);
+            if (result0) {
+              result0.catch(error => {
+                errorWithTimestamp('case 0 觸發外撥邏輯時發生錯誤:', error);
+              });
+            }
           }
           break;
         case 1:
