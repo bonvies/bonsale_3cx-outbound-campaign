@@ -1,0 +1,6 @@
+**/node_modules
+**/dist
+apps/backend/data
+# 排除 backend 的 .env（機密），保留 frontend 的 .env.production（Vite build time 需要）
+apps/backend/.env
+apps/backend/.env.*
