@@ -468,6 +468,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
+// 捕獲所有未處理的 Promise rejection，避免 Node.js 15+ 預設直接終止進程
+process.on('unhandledRejection', (reason, promise) => {
+  errorWithTimestamp('[FATAL] Unhandled Promise Rejection:', { reason, promise });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FIAS TCP 伺服器（語音通知功能使用）
 // ─────────────────────────────────────────────────────────────────────────────
