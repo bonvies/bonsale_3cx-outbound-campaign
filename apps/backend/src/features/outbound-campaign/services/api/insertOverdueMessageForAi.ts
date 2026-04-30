@@ -19,14 +19,15 @@ if (!post9000BasicAuth) {
   這是為 21 世紀 特別打造的 他們需要 post9000 來知道 AI 撥打的結果
   但我們會先用 post9000Dummy 送到 PY 那邊再去 呼叫 post9000
 */
-export async function post9000Dummy(description: string, description2: string, phone: string): Promise<{ success: boolean; data?: any; error?: { errorCode: string; error: string } }> {
+export async function post9000Dummy(description: string, description2: string, phone: string): Promise<{ success: boolean; data?: unknown; error?: { errorCode: string; error: string } }> {
   try {
     const response = await axios.post(`${host}/InsertOverdueMessageForAi`, {
       CaseNo: description,
       Phone: phone,
       ResultCode: "9000",
       ContentText: "",
-      SourceUrl: description2
+      SourceUrl: description2,
+      startTime: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei', hour12: false }).replace(' ', 'T') + '+08:00',
     }, {
       headers: {
         Authorization: 'dummy',
@@ -52,13 +53,14 @@ export async function post9000Dummy(description: string, description2: string, p
   這是為 21 世紀 特別打造的 他們需要 post9000 來知道 AI 撥打的結果
   但我們會先用 post9000Dummy 送到 PY 那邊再去 呼叫 post9000
 */
-export async function post9000(description: string, description2: string, phone: string): Promise<{ success: boolean; data?: any; error?: { errorCode: string; error: string } }> {
+export async function post9000(description: string, description2: string, phone: string): Promise<{ success: boolean; data?: unknown; error?: { errorCode: string; error: string } }> {
   try {
     const response = await axios.post(`${description2}/InsertOverdueMessageForAi`, {
       CaseNo: description,
       Phone: phone,
       ResultCode: "9000",
       ContentText: "",
+      startTime: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei', hour12: false }).replace(' ', 'T') + '+08:00',
     }, {
       headers: {
         Authorization: `Basic ${post9000BasicAuth}`,
