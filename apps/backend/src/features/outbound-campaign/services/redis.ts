@@ -1,8 +1,20 @@
 import { createClient, RedisClientType } from 'redis';
 import { logWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 
+const MAX_RECONNECT_RETRIES = 10;
+
 const client: RedisClientType = createClient({
-  url: process.env.REDIS_URL || 'redis://localhost:6379'
+  url: process.env.REDIS_URL || 'redis://localhost:6379',
+  socket: {
+    reconnectStrategy: (retries) => {
+      if (retries >= MAX_RECONNECT_RETRIES) {
+        errorWithTimestamp(`Redis 重連次數已達上限（${MAX_RECONNECT_RETRIES} 次），停止重試`);
+        return new Error('Redis 重連失敗：超過最大重試次數');
+      }
+      const delay = Math.min(retries * 500, 5000); // 每次增加 500ms，最多等 5 秒
+      return delay;
+    },
+  },
 }) as RedisClientType;
 
 client.on('error', (err) => {
@@ -15,6 +27,10 @@ client.on('connect', () => {
 
 client.on('ready', () => {
   logWithTimestamp({ isForce: true }, '✅ Redis Client 已準備就緒');
+});
+
+client.on('reconnecting', () => {
+  logWithTimestamp('🔄 Redis Client 重連中...');
 });
 
 client.on('end', () => {

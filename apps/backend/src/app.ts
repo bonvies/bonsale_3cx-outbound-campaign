@@ -401,7 +401,6 @@ httpServer.listen(PORT, async () => {
     if (ENABLE_OUTBOUND_CAMPAIGN) { // 只有在自動外播功能啟用時才建立 Redis 連線
       // 建立 Redis 連線，用於儲存外播專案狀態與撥號名單
       await initRedis();
-      logWithTimestamp({ isForce: true }, `🔴 Redis server is connected`);
     }
 
     if (ENABLE_CALL_SCHEDULE) { // 只有在語音通知功能啟用時才初始化資料庫與啟動相關服務
@@ -467,6 +466,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+// 捕獲所有未處理的 Promise rejection，避免 Node.js 15+ 預設直接終止進程
+process.on('unhandledRejection', (reason, promise) => {
+  errorWithTimestamp('[FATAL] Unhandled Promise Rejection:', { reason, promise });
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FIAS TCP 伺服器（語音通知功能使用）

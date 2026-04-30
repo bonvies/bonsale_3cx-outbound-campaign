@@ -39,7 +39,7 @@ async function refreshToken(currentRefreshToken: string): Promise<TokenResponseT
  * refreshToken 失敗時 fallback 到 fetchToken 重新取得憑證，
  * 避免斷網超過 refresh_token_expire_time 後永遠無法恢復。
  */
-async function scheduleTokenRefresh(tokenData: TokenResponseType, username: string, password: string): Promise<void> {
+function scheduleTokenRefresh(tokenData: TokenResponseType, username: string, password: string) {
   setTimeout(async () => {
     try {
       const newTokenData = await refreshToken(tokenData.refresh_token);
@@ -77,8 +77,8 @@ export const yeastarDevice: IPhoneApiService = {
     const path = process.env.YEASTAR_API_PATH;
     const username = process.env.YEASTAR_USERNAME;
     const password = process.env.YEASTAR_PASSWORD;
-    if (!host)     throw new Error('[yeastarApi] 環境變數 YEASTAR_API_HOST 未設定');
-    if (!path)     throw new Error('[yeastarApi] 環境變數 YEASTAR_API_PATH 未設定');
+    if (!host) throw new Error('[yeastarApi] 環境變數 YEASTAR_API_HOST 未設定');
+    if (!path) throw new Error('[yeastarApi] 環境變數 YEASTAR_API_PATH 未設定');
     if (!username) throw new Error('[yeastarApi] 環境變數 YEASTAR_USERNAME 未設定');
     if (!password) throw new Error('[yeastarApi] 環境變數 YEASTAR_PASSWORD 未設定');
 
