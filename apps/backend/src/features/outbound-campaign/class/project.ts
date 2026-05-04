@@ -1453,7 +1453,7 @@ export default class Project {
                   
                   if (post9000Result.success) {
                     // * 因為 21 世紀有可能會成功 但其實是錯的 所以這邊要多加判斷
-                    const apiData = post9000Result.data;
+                    const apiData = post9000Result.data as { StatusCode: number; Message: string } | undefined;
                     const isApiSuccess = apiData?.StatusCode === 0 && apiData?.Message === 'Success';
 
                     if (isApiSuccess) {
