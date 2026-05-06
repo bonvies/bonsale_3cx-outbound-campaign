@@ -422,7 +422,7 @@ httpServer.listen(PORT, async () => {
       logWithTimestamp({ isForce: true }, `🔌 WebSocket server is running on port ${PORT}`);
       logWithTimestamp({ isForce: true }, `🖥️ Bonsale WebHook WebSocket is available on port ${PORT}/api/bonsale/webhook-ws`);
     }
-    logWithTimestamp({ isForce: true }, `ℹ️ Version: v2.0.5`);
+    logWithTimestamp({ isForce: true }, `ℹ️ Version: v2.0.6`);
 
     if (ENABLE_OUTBOUND_CAMPAIGN) { // 只有在自動外播功能啟用時才從 Redis 恢復外播專案
       // 從 Redis 恢復上次服務器關閉前仍在執行的外播專案
