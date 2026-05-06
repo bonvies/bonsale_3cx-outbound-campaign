@@ -27,7 +27,7 @@ export async function post9000Dummy(description: string, description2: string, p
       ResultCode: "9000",
       ContentText: "",
       SourceUrl: description2,
-      startTime: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei', hour12: false }).replace(' ', 'T') + '+08:00',
+      StartTime: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei', hour12: false }).replace(' ', 'T') + '+08:00',
     }, {
       headers: {
         Authorization: 'dummy',
@@ -60,7 +60,7 @@ export async function post9000(description: string, description2: string, phone:
       Phone: phone,
       ResultCode: "9000",
       ContentText: "",
-      startTime: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei', hour12: false }).replace(' ', 'T') + '+08:00',
+      StartTime: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei', hour12: false }).replace(' ', 'T') + '+08:00',
     }, {
       headers: {
         Authorization: `Basic ${post9000BasicAuth}`,
