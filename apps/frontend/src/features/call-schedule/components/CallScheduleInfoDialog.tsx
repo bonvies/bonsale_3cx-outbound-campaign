@@ -54,6 +54,7 @@ export function CallScheduleInfoDialog({
             {[
               { label: '呼叫日期時間', value: display?.date ? format(new Date(display.date), 'yyyy/MM/dd HH:mm') : '-' },
               { label: '分機號', value: display?.extension },
+              { label: '房間號碼', value: display?.roomNum || '-' },
               { label: '音檔名稱', value: display?.audioFile || '-' },
               { label: '撥號狀態', value: display?.callStatus ?? '-' },
               { label: '撥號紀錄', value: display?.callRecord || '-' },

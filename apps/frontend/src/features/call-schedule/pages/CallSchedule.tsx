@@ -237,6 +237,9 @@ export default function CallSchedule() {
               <TableCell align='center' sx={{ width: '120px' }}>
                 分機號
               </TableCell>
+              <TableCell align='center' sx={{ width: '120px' }}>
+                房間號碼
+              </TableCell>
               <TableCell align='center' sx={{ width: '100px' }}>
                 撥號狀態
               </TableCell>
@@ -254,7 +257,7 @@ export default function CallSchedule() {
           <TableBody sx={{ backgroundColor: 'white' }}>
             {records.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ height: '100%', borderBottom: 'none', color: '#888', py: 4, fontSize: '1.5rem' }}>
+                <TableCell colSpan={7} align="center" sx={{ height: '100%', borderBottom: 'none', color: '#888', py: 4, fontSize: '1.5rem' }}>
                   沒有資料
                 </TableCell>
               </TableRow>
@@ -263,6 +266,7 @@ export default function CallSchedule() {
                 <TableRow key={row.id}>
                   <TableCell align='center'>{formatLocalDate(row.date, timezoneIANA)}</TableCell>
                   <TableCell align='center'>{row.extension}</TableCell>
+                  <TableCell align='center'>{row.roomNum || '-'}</TableCell>
                   <TableCell align='center'>
                     <Chip
                       label={row.callStatus}

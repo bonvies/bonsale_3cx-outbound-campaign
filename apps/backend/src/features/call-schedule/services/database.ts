@@ -29,7 +29,8 @@ export async function initDatabase(): Promise<void> {
       notificationContent TEXT NOT NULL,
       retryInterval       TEXT NOT NULL,
       maxRetries          TEXT NOT NULL DEFAULT '3',
-      createdAt           TEXT NOT NULL
+      createdAt           TEXT NOT NULL,
+      roomNum              TEXT
     )
   `);
 

@@ -21,6 +21,7 @@ type DbRow = {
   retryInterval: string;
   maxRetries: string;
   createdAt: string;
+  roomNum: string | null;
 };
 
 export type CallScheduleRecord = ReturnType<typeof rowToRecord>;
@@ -44,6 +45,7 @@ export type CreateCallScheduleParams = {
   retryInterval: string;   // 分鐘（字串）
   maxRetries: string;
   notes?: string;
+  roomNum?: string;
 };
 
 export type UpdateCallScheduleParams = {
@@ -55,6 +57,7 @@ export type UpdateCallScheduleParams = {
   notificationContent?: string;
   retryInterval?: string;
   maxRetries?: string;
+  roomNum?: string;
 };
 
 const SORTABLE_FIELDS: Record<string, string> = {
@@ -81,6 +84,7 @@ function rowToRecord(row: DbRow, timezone = 'UTC') {
     retryInterval: row.retryInterval,
     maxRetries: row.maxRetries,
     createdAt: row.createdAt,
+    roomNum: row.roomNum ?? undefined,
   };
 }
 
@@ -185,7 +189,7 @@ export async function getCallScheduleById(id: string): Promise<CallScheduleRecor
 
 /** POST - 建立排程並登記 job */
 export function createCallSchedule(params: CreateCallScheduleParams): string {
-  const { audioFile, date, extension, notificationContent, retryInterval, maxRetries, notes = '' } = params;
+  const { audioFile, date, extension, notificationContent, retryInterval, maxRetries, notes = '', roomNum } = params;
 
   if (new Date(date) <= new Date()) {
     throw new Error('date must be in the future');
@@ -199,9 +203,9 @@ export function createCallSchedule(params: CreateCallScheduleParams): string {
 
   db.prepare(`
     INSERT INTO call_schedules
-      (id, audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, maxRetries, createdAt)
-    VALUES (?, ?, ?, ?, '排程中', NULL, ?, ?, ?, ?, ?)
-  `).run(newId, audioFile, date, extension, notes, notificationContent, retryInterval, maxRetries, createdAt);
+      (id, audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, maxRetries, createdAt, roomNum)
+    VALUES (?, ?, ?, ?, '排程中', NULL, ?, ?, ?, ?, ?, ?)
+  `).run(newId, audioFile, date, extension, notes, notificationContent, retryInterval, maxRetries, createdAt, roomNum ?? null);
 
   scheduleCallJob(newId, new Date(date), extension, maxRetriesNum, retryIntervalMs);
   return newId;
@@ -210,7 +214,7 @@ export function createCallSchedule(params: CreateCallScheduleParams): string {
 /** PUT - 更新欄位，取消舊 job，以新參數重新排程；回傳 false 表示 id 不存在 */
 export function updateCallSchedule(id: string, params: UpdateCallScheduleParams): boolean {
   const db = getDatabase();
-  const { audioFile, date, extension, callRecord, notes, notificationContent, retryInterval, maxRetries } = params;
+  const { audioFile, date, extension, callRecord, notes, notificationContent, retryInterval, maxRetries, roomNum } = params;
 
   if (date !== undefined && date !== null && new Date(date) <= new Date()) {
     throw new Error('date must be in the future');
@@ -226,12 +230,13 @@ export function updateCallSchedule(id: string, params: UpdateCallScheduleParams)
       notes               = COALESCE(?, notes),
       notificationContent = COALESCE(?, notificationContent),
       retryInterval       = COALESCE(?, retryInterval),
-      maxRetries          = COALESCE(?, maxRetries)
+      maxRetries          = COALESCE(?, maxRetries),
+      roomNum             = COALESCE(?, roomNum)
     WHERE id = ?
   `).run(
     audioFile ?? null, date ?? null, extension ?? null,
     callRecord ?? null, notes ?? null, notificationContent ?? null,
-    retryInterval ?? null, maxRetries ?? null,
+    retryInterval ?? null, maxRetries ?? null, roomNum ?? null,
     id
   );
 

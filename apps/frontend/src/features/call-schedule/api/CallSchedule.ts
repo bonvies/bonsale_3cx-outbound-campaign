@@ -64,6 +64,7 @@ export async function createCallSchedule(form: CallScheduleFormData): Promise<vo
     retryInterval: form.retryInterval,
     maxRetries: form.maxRetries,
     notes: form.notes,
+    roomNum: form.roomNum || undefined,
   })
 }
 
@@ -76,6 +77,7 @@ export async function updateCallSchedule(id: string, form: CallScheduleFormData)
     retryInterval: form.retryInterval,
     maxRetries: form.maxRetries,
     notes: form.notes,
+    roomNum: form.roomNum || undefined,
   })
 }
 

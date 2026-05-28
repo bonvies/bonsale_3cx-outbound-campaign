@@ -33,6 +33,7 @@ const callScheduleSchema = z.object({
   notificationContent: z.string().min(1, '通知內容為必填'),
   audioFile: z.string().min(1, '音檔名稱為必填'),
   notes: z.string(),
+  roomNum: z.string().optional(),
 })
 
 export type CallScheduleFormData = z.infer<typeof callScheduleSchema>
@@ -46,6 +47,7 @@ const defaultValues: CallScheduleFormData = {
   notificationContent: '標準叫醒服務',
   audioFile: '預設鈴聲',
   notes: '',
+  roomNum: '',
 }
 
 // ── props ────────────────────────────────────────────────────
@@ -86,6 +88,7 @@ export function CallScheduleDialog({
         notificationContent: fetchedData.notificationContent,
         audioFile: fetchedData.audioFile,
         notes: fetchedData.notes ?? '',
+        roomNum: fetchedData.roomNum ?? '',
       })
     } else if (mode === 'add') {
       reset(defaultValues)
@@ -162,6 +165,24 @@ export function CallScheduleDialog({
                   error={!!error}
                   helperText={error?.message}
                   required
+                />
+              )}
+            />
+
+            {/* 房間號碼 */}
+            <Controller
+              name="roomNum"
+              control={control}
+              render={({ field: { value, onChange, ref }, fieldState: { error } }) => (
+                <TextField
+                  value={value}
+                  onChange={onChange}
+                  inputRef={ref}
+                  fullWidth
+                  label="房間號碼"
+                  placeholder="例如：10001"
+                  error={!!error}
+                  helperText={error?.message}
                 />
               )}
             />
