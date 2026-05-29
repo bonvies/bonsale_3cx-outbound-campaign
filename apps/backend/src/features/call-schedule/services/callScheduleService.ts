@@ -22,6 +22,7 @@ type DbRow = {
   maxRetries: string;
   createdAt: string;
   roomNum: string | null;
+  retryCount: string | null;
 };
 
 export type CallScheduleRecord = ReturnType<typeof rowToRecord>;
@@ -85,6 +86,7 @@ function rowToRecord(row: DbRow, timezone = 'UTC') {
     maxRetries: row.maxRetries,
     createdAt: row.createdAt,
     roomNum: row.roomNum ?? undefined,
+    retryCount: row.retryCount ?? undefined,
   };
 }
 
@@ -111,14 +113,14 @@ function scheduleCallJob(
       const result = await phoneApiService.makeCall(fromExtension, extension);
       if (!result.success) {
         console.error(`[CallScheduleService] Call failed for ${id}:`, result.error);
-        db.prepare(`UPDATE call_schedules SET callStatus = '錯誤' WHERE id = ?`).run(id);
+        db.prepare(`UPDATE call_schedules SET callStatus = 'ERROR' WHERE id = ?`).run(id);
         return;
       }
-      db.prepare(`UPDATE call_schedules SET callStatus = '撥打中' WHERE id = ?`).run(id);
+      db.prepare(`UPDATE call_schedules SET callStatus = 'CALLING' WHERE id = ?`).run(id);
       registerCall({ scheduleId: id, extension, from: fromExtension, maxRetries: maxRetriesNum, retryIntervalMs });
     } catch (err) {
       console.error(`[CallScheduleService] Job execution failed for ${id}:`, err);
-      db.prepare(`UPDATE call_schedules SET callStatus = '錯誤' WHERE id = ?`).run(id);
+      db.prepare(`UPDATE call_schedules SET callStatus = 'ERROR' WHERE id = ?`).run(id);
     }
   });
 }
@@ -203,8 +205,8 @@ export function createCallSchedule(params: CreateCallScheduleParams): string {
 
   db.prepare(`
     INSERT INTO call_schedules
-      (id, audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, maxRetries, createdAt, roomNum)
-    VALUES (?, ?, ?, ?, '排程中', NULL, ?, ?, ?, ?, ?, ?)
+      (id, audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, maxRetries, createdAt, roomNum, retryCount)
+    VALUES (?, ?, ?, ?, 'SCHEDULED', NULL, ?, ?, ?, ?, ?, ?, NULL)
   `).run(newId, audioFile, date, extension, notes, notificationContent, retryInterval, maxRetries, createdAt, roomNum ?? null);
 
   scheduleCallJob(newId, new Date(date), extension, maxRetriesNum, retryIntervalMs);
@@ -225,7 +227,8 @@ export function updateCallSchedule(id: string, params: UpdateCallScheduleParams)
       audioFile           = COALESCE(?, audioFile),
       date                = COALESCE(?, date),
       extension           = COALESCE(?, extension),
-      callStatus          = '排程中',
+      callStatus          = 'SCHEDULED',
+      retryCount          = NULL,
       callRecord          = COALESCE(?, callRecord),
       notes               = COALESCE(?, notes),
       notificationContent = COALESCE(?, notificationContent),
@@ -272,24 +275,25 @@ export function recoverPendingSchedules(): void {
   // 已過期但仍是「排程中」→ 標記為錯誤，寫入原因
   db.prepare(`
     UPDATE call_schedules
-    SET callStatus = '錯誤',
+    SET callStatus = 'ERROR',
         notes = CASE WHEN notes IS NULL OR notes = '' THEN '伺服器重啟時排程已過期' ELSE notes || ' | 伺服器重啟時排程已過期' END
-    WHERE callStatus = '排程中' AND date < ?
+    WHERE callStatus = 'SCHEDULED' AND date < ?
   `).run(now);
 
   // 「等待重試」→ 標記為錯誤（retry job 在重啟後已消失，不會再執行），寫入原因
   db.prepare(`
     UPDATE call_schedules
-    SET callStatus = '錯誤',
+    SET callStatus = 'ERROR',
+        retryCount = NULL,
         notes = CASE WHEN notes IS NULL OR notes = '' THEN '伺服器重啟，重試排程已中斷' ELSE notes || ' | 伺服器重啟，重試排程已中斷' END
-    WHERE callStatus LIKE '等待重試%'
+    WHERE callStatus = 'WAITING_RETRY'
   `).run();
 
   // 未來的「排程中」→ 重新登記 job
   const rows = db.prepare(`
     SELECT id, date, extension, retryInterval, maxRetries
     FROM call_schedules
-    WHERE callStatus = '排程中' AND date >= ?
+    WHERE callStatus = 'SCHEDULED' AND date >= ?
   `).all(now) as Pick<DbRow, 'id' | 'date' | 'extension' | 'retryInterval' | 'maxRetries'>[];
 
   for (const row of rows) {

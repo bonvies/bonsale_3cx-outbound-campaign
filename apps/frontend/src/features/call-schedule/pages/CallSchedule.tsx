@@ -24,6 +24,7 @@ import {
 import { format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 import type { CallScheduleFilters as FilterType } from '../types/callSchedule'
+import { STATUS_LABEL } from '../types/callSchedule'
 import { CallScheduleDialog } from '../components/CallScheduleDialog'
 import { CallScheduleInfoDialog } from '../components/CallScheduleInfoDialog'
 import { CallScheduleFilters } from '../components/CallScheduleFilters'
@@ -126,10 +127,14 @@ export default function CallSchedule() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case '排程中': return 'warning'
-      case '已完成': return 'success'
-      case '失敗':   return 'error'
-      default:       return 'default'
+      case 'SCHEDULED': return 'warning'
+      case 'CALLING':
+      case 'RINGING': return 'info'
+      case 'ANSWERED': return 'success'
+      case 'WAITING_RETRY': return 'warning'
+      case 'NO_ANSWER':
+      case 'ERROR': return 'error'
+      default: return 'default'
     }
   }
 
@@ -243,6 +248,9 @@ export default function CallSchedule() {
               <TableCell align='center' sx={{ width: '100px' }}>
                 撥號狀態
               </TableCell>
+              <TableCell align='center' sx={{ width: '80px' }}>
+                重試次數
+              </TableCell>
               <TableCell align='center' sx={{ width: '200px' }}>
                 撥號紀錄
               </TableCell>
@@ -257,7 +265,7 @@ export default function CallSchedule() {
           <TableBody sx={{ backgroundColor: 'white' }}>
             {records.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ height: '100%', borderBottom: 'none', color: '#888', py: 4, fontSize: '1.5rem' }}>
+                <TableCell colSpan={8} align="center" sx={{ height: '100%', borderBottom: 'none', color: '#888', py: 4, fontSize: '1.5rem' }}>
                   沒有資料
                 </TableCell>
               </TableRow>
@@ -269,11 +277,12 @@ export default function CallSchedule() {
                   <TableCell align='center'>{row.roomNum || '-'}</TableCell>
                   <TableCell align='center'>
                     <Chip
-                      label={row.callStatus}
+                      label={STATUS_LABEL[row.callStatus]}
                       color={getStatusColor(row.callStatus)}
                       size="small"
                     />
                   </TableCell>
+                  <TableCell align='center'>{row.retryCount || '-'}</TableCell>
                   <TableCell align='center'>{row.callRecord || '-'}</TableCell>
                   <TableCell align='center'>{row.notes || '-'}</TableCell>
                   <TableCell align='center'>

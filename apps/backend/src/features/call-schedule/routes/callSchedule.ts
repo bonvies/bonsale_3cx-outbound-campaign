@@ -56,7 +56,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST /api/call-schedule
 router.post('/', (req: Request, res: Response) => {
   try {
-    const { audioFile, date, extension, notificationContent, retryInterval, maxRetries = '3', notes = '' } = req.body;
+    const { audioFile, date, extension, notificationContent, retryInterval, maxRetries = '3', notes = '', roomNum } = req.body;
 
     if (!audioFile || !date || !extension || !notificationContent || !retryInterval) {
       res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -68,7 +68,7 @@ router.post('/', (req: Request, res: Response) => {
       return;
     }
 
-    const newId = createCallSchedule({ audioFile, date, extension, notificationContent, retryInterval, maxRetries, notes });
+    const newId = createCallSchedule({ audioFile, date, extension, notificationContent, retryInterval, maxRetries, notes, roomNum });
     res.json({ success: true, data: { id: newId } });
   } catch (error) {
     if (error instanceof Error && error.message === 'date must be in the future') {
@@ -84,14 +84,14 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { audioFile, date, extension, callRecord, notes, notificationContent, retryInterval, maxRetries } = req.body;
+    const { audioFile, date, extension, callRecord, notes, notificationContent, retryInterval, maxRetries, roomNum } = req.body;
 
     if (date !== undefined && date !== null && !validateUtcDate(date)) {
       res.status(400).json({ success: false, message: 'date must be a valid UTC ISO 8601 string (e.g. 2026-03-06T06:00:00.000Z)' });
       return;
     }
 
-    const found = updateCallSchedule(id, { audioFile, date, extension, callRecord, notes, notificationContent, retryInterval, maxRetries });
+    const found = updateCallSchedule(id, { audioFile, date, extension, callRecord, notes, notificationContent, retryInterval, maxRetries, roomNum });
     if (!found) {
       res.status(404).json({ success: false, message: 'Not found' });
       return;

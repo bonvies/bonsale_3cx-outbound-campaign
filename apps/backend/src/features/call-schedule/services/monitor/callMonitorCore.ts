@@ -37,18 +37,23 @@ const pendingCalls = new Map<string, PendingCall>();
 // DB helper
 // ─────────────────────────────────────────────
 
-function updateStatus(scheduleId: string, status: string, callRecord?: string): void {
+function updateStatus(scheduleId: string, status: string, callRecord?: string, retryCount?: string | null): void {
   try {
     const db = getDatabase();
+    const setClauses = ['callStatus = ?'];
+    const values: (string | null)[] = [status];
+
     if (callRecord !== undefined) {
-      db.prepare(
-        `UPDATE call_schedules SET callStatus = ?, callRecord = ? WHERE id = ?`
-      ).run(status, callRecord, scheduleId);
-    } else {
-      db.prepare(
-        `UPDATE call_schedules SET callStatus = ? WHERE id = ?`
-      ).run(status, scheduleId);
+      setClauses.push('callRecord = ?');
+      values.push(callRecord);
     }
+    if (retryCount !== undefined) {
+      setClauses.push('retryCount = ?');
+      values.push(retryCount);
+    }
+    values.push(scheduleId);
+
+    db.prepare(`UPDATE call_schedules SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
     logWithTimestamp(`[CallMonitor] ${scheduleId} → status: ${status}`);
   } catch (err) {
     errorWithTimestamp('[CallMonitor] DB update failed:', err);
@@ -63,7 +68,7 @@ export function handleRing(ext: string): void {
   const call = pendingCalls.get(ext);
   if (!call) return;
   logWithTimestamp(`[CallMonitor] 🔔 RING  ext=${ext} scheduleId=${call.scheduleId}`);
-  updateStatus(call.scheduleId, '響鈴中', new Date().toISOString());
+  updateStatus(call.scheduleId, 'RINGING');
 }
 
 export function handleAnswer(ext: string): void {
@@ -71,7 +76,7 @@ export function handleAnswer(ext: string): void {
   if (!call) return;
   logWithTimestamp(`[CallMonitor] 📞 ANSWER ext=${ext} scheduleId=${call.scheduleId}`);
   call.answered = true;
-  updateStatus(call.scheduleId, '已接聽', new Date().toISOString());
+  updateStatus(call.scheduleId, 'ANSWERED', new Date().toISOString());
   pendingCalls.delete(ext);
 }
 
@@ -93,7 +98,7 @@ export async function handleBye(ext: string): Promise<void> {
 
   if (nextRetryCount > call.maxRetries) {
     logWithTimestamp(`[CallMonitor] 已達最大重試次數 (${call.maxRetries})，標記為未接聽`);
-    updateStatus(call.scheduleId, '未接聽', new Date().toISOString());
+    updateStatus(call.scheduleId, 'NO_ANSWER', new Date().toISOString());
     pendingCalls.delete(ext);
     return;
   }
@@ -102,7 +107,7 @@ export async function handleBye(ext: string): Promise<void> {
   logWithTimestamp(
     `[CallMonitor] 安排第 ${nextRetryCount}/${call.maxRetries} 次重試，時間: ${retryAt.toISOString()}`
   );
-  updateStatus(call.scheduleId, `等待重試 (${nextRetryCount}/${call.maxRetries})`, new Date().toISOString());
+  updateStatus(call.scheduleId, 'WAITING_RETRY', new Date().toISOString(), `${nextRetryCount}/${call.maxRetries}`);
   pendingCalls.delete(ext);
 
   schedule.scheduleJob(
@@ -116,10 +121,10 @@ export async function handleBye(ext: string): Promise<void> {
         const result = await phoneApiService.makeCall(call.from, ext);
         if (!result.success) {
           errorWithTimestamp(`[CallMonitor] 重試撥打失敗:`, result.error);
-          updateStatus(call.scheduleId, '錯誤', new Date().toISOString());
+          updateStatus(call.scheduleId, 'ERROR', new Date().toISOString());
           return;
         }
-        updateStatus(call.scheduleId, '撥打中', new Date().toISOString());
+        updateStatus(call.scheduleId, 'CALLING');
         registerCall({
           scheduleId: call.scheduleId,
           extension: ext,
@@ -130,7 +135,7 @@ export async function handleBye(ext: string): Promise<void> {
         });
       } catch (err) {
         errorWithTimestamp(`[CallMonitor] 重試異常:`, err);
-        updateStatus(call.scheduleId, '錯誤', new Date().toISOString());
+        updateStatus(call.scheduleId, 'ERROR', new Date().toISOString());
       }
     }
   );
