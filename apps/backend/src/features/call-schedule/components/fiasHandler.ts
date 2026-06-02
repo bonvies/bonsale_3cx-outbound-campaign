@@ -62,10 +62,14 @@ function findScheduleId(extension: string, dateIso: string): string | null {
 export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Promise<void> {
   switch (msg.type) {
 
-    case 'LS':
+    case 'LS': {
       console.log('[FIAS] 執行握手程序...');
-      conn.send('LS|DA260226|TI120000');
+      const now = new Date();
+      const da = now.toISOString().slice(2, 10).replace(/-/g, ''); // YYMMDD
+      const ti = now.toISOString().slice(11, 19).replace(/:/g, ''); // HHMMSS
+      conn.send(`LS|DA${da}|TI${ti}`);
       break;
+    }
 
     case 'LA':
       conn.send('LA');
