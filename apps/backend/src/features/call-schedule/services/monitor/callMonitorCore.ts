@@ -2,6 +2,7 @@ import schedule from 'node-schedule';
 import { getDatabase } from '../database';
 import { phoneApiService } from '../api/phoneApiService';
 import { logWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
+import { notifyCallResult } from './callResultNotifier';
 
 // ─────────────────────────────────────────────
 // Types
@@ -78,6 +79,7 @@ export function handleAnswer(ext: string): void {
   call.answered = true;
   updateStatus(call.scheduleId, 'ANSWERED', new Date().toISOString());
   pendingCalls.delete(ext);
+  notifyCallResult({ scheduleId: call.scheduleId, extension: ext, finalStatus: 'ANSWERED', callRecord: new Date().toISOString() });
 }
 
 export async function handleBye(ext: string): Promise<void> {
@@ -100,6 +102,7 @@ export async function handleBye(ext: string): Promise<void> {
     logWithTimestamp(`[CallMonitor] 已達最大重試次數 (${call.maxRetries})，標記為未接聽`);
     updateStatus(call.scheduleId, 'NO_ANSWER', new Date().toISOString());
     pendingCalls.delete(ext);
+    notifyCallResult({ scheduleId: call.scheduleId, extension: ext, finalStatus: 'NO_ANSWER', retryCount: `${call.retryCount}/${call.maxRetries}` });
     return;
   }
 
@@ -122,6 +125,7 @@ export async function handleBye(ext: string): Promise<void> {
         if (!result.success) {
           errorWithTimestamp(`[CallMonitor] 重試撥打失敗:`, result.error);
           updateStatus(call.scheduleId, 'ERROR', new Date().toISOString());
+          notifyCallResult({ scheduleId: call.scheduleId, extension: ext, finalStatus: 'ERROR', retryCount: `${nextRetryCount}/${call.maxRetries}` });
           return;
         }
         updateStatus(call.scheduleId, 'CALLING');
@@ -136,6 +140,7 @@ export async function handleBye(ext: string): Promise<void> {
       } catch (err) {
         errorWithTimestamp(`[CallMonitor] 重試異常:`, err);
         updateStatus(call.scheduleId, 'ERROR', new Date().toISOString());
+        notifyCallResult({ scheduleId: call.scheduleId, extension: ext, finalStatus: 'ERROR', retryCount: `${nextRetryCount}/${call.maxRetries}` });
       }
     }
   );
