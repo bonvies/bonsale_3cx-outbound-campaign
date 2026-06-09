@@ -50,7 +50,7 @@ function findScheduleId(extension: string, dateIso: string): string | null {
   const row = db.prepare(
     `SELECT id FROM call_schedules
      WHERE extension = ? AND date = ?
-     AND callStatus NOT IN ('已接聽', '未接聽', '錯誤')
+     AND callStatus NOT IN ('ANSWERED', 'NO_ANSWER', 'ERROR')
      LIMIT 1`
   ).get(extension, dateIso) as { id: string } | undefined;
   return row?.id ?? null;

@@ -57,7 +57,7 @@ export function CallScheduleInfoDialog({
               { label: '房間號碼', value: display?.roomNum || '-' },
               { label: '音檔名稱', value: display?.audioFile || '-' },
               { label: '撥號狀態', value: display?.callStatus ?? '-' },
-              { label: '重播次數', value: display?.retryCount || '-' },
+              { label: '重播次數', value: display?.retryCount != null ? `${display.retryCount}/${display.maxRetries}` : '-' },
               { label: '撥號紀錄', value: display?.callRecord || '-' },
               { label: '備註', value: display?.notes || '-' },
             ].map(({ label, value }, i, arr) => (

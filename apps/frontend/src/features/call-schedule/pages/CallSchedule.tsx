@@ -282,7 +282,7 @@ export default function CallSchedule() {
                       size="small"
                     />
                   </TableCell>
-                  <TableCell align='center'>{row.retryCount || '-'}</TableCell>
+                  <TableCell align='center'>{row.retryCount != null ? `${row.retryCount}/${row.maxRetries}` : '-'}</TableCell>
                   <TableCell align='center'>{row.callRecord || '-'}</TableCell>
                   <TableCell align='center'>{row.notes || '-'}</TableCell>
                   <TableCell align='center'>

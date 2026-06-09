@@ -38,11 +38,11 @@ const pendingCalls = new Map<string, PendingCall>();
 // DB helper
 // ─────────────────────────────────────────────
 
-function updateStatus(scheduleId: string, status: string, callRecord?: string, retryCount?: string | null): void {
+function updateStatus(scheduleId: string, status: string, callRecord?: string, retryCount?: number | null): void {
   try {
     const db = getDatabase();
     const setClauses = ['callStatus = ?'];
-    const values: (string | null)[] = [status];
+    const values: (string | number | null)[] = [status];
 
     if (callRecord !== undefined) {
       setClauses.push('callRecord = ?');
@@ -110,7 +110,7 @@ export async function handleBye(ext: string): Promise<void> {
   logWithTimestamp(
     `[CallMonitor] 安排第 ${nextRetryCount}/${call.maxRetries} 次重試，時間: ${retryAt.toISOString()}`
   );
-  updateStatus(call.scheduleId, 'WAITING_RETRY', new Date().toISOString(), `${nextRetryCount}/${call.maxRetries}`);
+  updateStatus(call.scheduleId, 'WAITING_RETRY', new Date().toISOString(), nextRetryCount);
   pendingCalls.delete(ext);
 
   schedule.scheduleJob(

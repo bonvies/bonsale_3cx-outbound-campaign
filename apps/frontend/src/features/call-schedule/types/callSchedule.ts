@@ -23,12 +23,12 @@ export interface CallScheduleRecord {
   date: string // 日期，例如: "2025/12/05 07:30"
   extension: string // 分機號，例如: "A館 10F - 1002"
   callStatus: CallStatus // 撥號狀態
-  retryCount?: string // 重試進度，例如: "1/3"（僅 WAITING_RETRY 時有值）
+  retryCount?: number // 目前重試次數（搭配 maxRetries 組成 "n/m" 顯示）
   callRecord?: string // 撥號紀錄
   notes?: string // 備註
   notificationContent: string // 通知內容
-  retryInterval: string // 重試間隔，單位分鐘
-  maxRetries?: string // 最多重試次數
+  retryInterval: number // 重試間隔，單位分鐘
+  maxRetries?: number // 最多重試次數
   createdAt?: string // 建立時間 (ISO string)
   roomNum?: string // 房間號碼
 }

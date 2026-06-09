@@ -18,11 +18,11 @@ type DbRow = {
   callRecord: string | null;
   notes: string | null;
   notificationContent: string;
-  retryInterval: string;
-  maxRetries: string;
+  retryInterval: number;
+  maxRetries: number;
   createdAt: string;
   roomNum: string | null;
-  retryCount: string | null;
+  retryCount: number | null;
 };
 
 export type CallScheduleRecord = ReturnType<typeof rowToRecord>;
@@ -197,17 +197,18 @@ export function createCallSchedule(params: CreateCallScheduleParams): string {
     throw new Error('date must be in the future');
   }
 
-  const db            = getDatabase();
-  const newId         = randomUUID();
-  const createdAt     = new Date().toISOString();
-  const maxRetriesNum = Math.max(0, parseInt(maxRetries, 10) || 0);
-  const retryIntervalMs = Math.max(0, parseFloat(retryInterval) || 0) * 60 * 1000;
+  const db               = getDatabase();
+  const newId            = randomUUID();
+  const createdAt        = new Date().toISOString();
+  const maxRetriesNum    = Math.max(0, parseInt(maxRetries, 10) || 0);
+  const retryIntervalMin = Math.max(0, parseFloat(retryInterval) || 0);
+  const retryIntervalMs  = retryIntervalMin * 60 * 1000;
 
   db.prepare(`
     INSERT INTO call_schedules
       (id, audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, maxRetries, createdAt, roomNum, retryCount)
     VALUES (?, ?, ?, ?, 'SCHEDULED', NULL, ?, ?, ?, ?, ?, ?, NULL)
-  `).run(newId, audioFile, date, extension, notes, notificationContent, retryInterval, maxRetries, createdAt, roomNum ?? null);
+  `).run(newId, audioFile, date, extension, notes, notificationContent, retryIntervalMin, maxRetriesNum, createdAt, roomNum ?? null);
 
   scheduleCallJob(newId, new Date(date), extension, maxRetriesNum, retryIntervalMs);
   return newId;
@@ -221,6 +222,9 @@ export function updateCallSchedule(id: string, params: UpdateCallScheduleParams)
   if (date !== undefined && date !== null && new Date(date) <= new Date()) {
     throw new Error('date must be in the future');
   }
+
+  const retryIntervalMin = retryInterval !== undefined ? Math.max(0, parseFloat(retryInterval) || 0) : undefined;
+  const maxRetriesNum    = maxRetries    !== undefined ? Math.max(0, parseInt(maxRetries, 10) || 0)  : undefined;
 
   db.prepare(`
     UPDATE call_schedules SET
@@ -239,13 +243,13 @@ export function updateCallSchedule(id: string, params: UpdateCallScheduleParams)
   `).run(
     audioFile ?? null, date ?? null, extension ?? null,
     callRecord ?? null, notes ?? null, notificationContent ?? null,
-    retryInterval ?? null, maxRetries ?? null, roomNum ?? null,
+    retryIntervalMin ?? null, maxRetriesNum ?? null, roomNum ?? null,
     id
   );
 
   const updatedRow = db.prepare(
     'SELECT date, extension, retryInterval, maxRetries FROM call_schedules WHERE id = ?'
-  ).get(id) as { date: string; extension: string; retryInterval: string; maxRetries: string } | undefined;
+  ).get(id) as { date: string; extension: string; retryInterval: number; maxRetries: number } | undefined;
 
   if (!updatedRow) return false;
 
@@ -254,8 +258,8 @@ export function updateCallSchedule(id: string, params: UpdateCallScheduleParams)
     id,
     new Date(updatedRow.date),
     updatedRow.extension,
-    Math.max(0, parseInt(updatedRow.maxRetries, 10) || 0),
-    Math.max(0, parseFloat(updatedRow.retryInterval) || 0) * 60 * 1000,
+    updatedRow.maxRetries,
+    updatedRow.retryInterval * 60 * 1000,
   );
   return true;
 }
@@ -301,8 +305,8 @@ export function recoverPendingSchedules(): void {
       row.id,
       new Date(row.date),
       row.extension,
-      Math.max(0, parseInt(row.maxRetries, 10) || 0),
-      Math.max(0, parseFloat(row.retryInterval) || 0) * 60 * 1000,
+      row.maxRetries,
+      row.retryInterval * 60 * 1000,
     );
   }
 
