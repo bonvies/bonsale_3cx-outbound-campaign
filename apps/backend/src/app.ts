@@ -33,6 +33,7 @@ import Project from './features/outbound-campaign/class/project';
 // - startCallMonitorServer: 啟動 NewRock OM API 狀態監控（輪詢通話結果）
 // - recoverPendingSchedules: 服務器重啟後，重新註冊尚未執行的排程任務
 import callScheduleRouter from './features/call-schedule/routes/callSchedule';
+import lakeshoreRouter from './features/call-schedule/routes/lakeshore';
 import { initDatabase } from './features/call-schedule/services/database';
 import { startCallMonitorServer } from './features/call-schedule/services/callMonitorService';
 import { recoverPendingSchedules } from './features/call-schedule/services/callScheduleService';
@@ -136,6 +137,8 @@ if (ENABLE_OUTBOUND_CAMPAIGN) {
 if (ENABLE_CALL_SCHEDULE) {
   // 語音通知排程 API：/api/call-schedule/*
   app.use('/api/call-schedule', callScheduleRouter);
+  // Lakeshore Hotel 入單 API：/api/lakeshore/*
+  app.use('/api/lakeshore', lakeshoreRouter);
 }
 
 // 根路由：健康檢查 / 版本確認

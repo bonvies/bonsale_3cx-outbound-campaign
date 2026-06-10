@@ -214,6 +214,45 @@ export function createCallSchedule(params: CreateCallScheduleParams): string {
   return newId;
 }
 
+export type TriggerImmediateCallParams = {
+  audioFile: string;
+  extension: string;
+  notificationContent: string;
+  retryInterval: string;  // 分鐘（字串）
+  maxRetries: string;
+  notes?: string;
+  roomNum?: string;
+};
+
+/** 立即撥打（不排程）：寫入 DB 後直接觸發，供外部系統（如 Lakeshore Hotel）推單使用 */
+export async function triggerImmediateCall(params: TriggerImmediateCallParams): Promise<string> {
+  const { audioFile, extension, notificationContent, retryInterval, maxRetries, notes = '', roomNum } = params;
+
+  const db               = getDatabase();
+  const newId            = randomUUID();
+  const createdAt        = new Date().toISOString();
+  const maxRetriesNum    = Math.max(0, parseInt(maxRetries, 10) || 0);
+  const retryIntervalMin = Math.max(0, parseFloat(retryInterval) || 0);
+  const retryIntervalMs  = retryIntervalMin * 60 * 1000;
+  const fromExtension    = process.env.OM_CALL_FROM_EXTENSION ?? '9038';
+
+  db.prepare(`
+    INSERT INTO call_schedules
+      (id, audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, maxRetries, createdAt, roomNum, retryCount)
+    VALUES (?, ?, ?, ?, 'CALLING', NULL, ?, ?, ?, ?, ?, ?, NULL)
+  `).run(newId, audioFile, createdAt, extension, notes, notificationContent, retryIntervalMin, maxRetriesNum, createdAt, roomNum ?? null);
+
+  const result = await phoneApiService.makeCall(fromExtension, extension);
+  if (!result.success) {
+    console.error(`[CallScheduleService] triggerImmediateCall failed for ${newId}:`, result.error);
+    db.prepare(`UPDATE call_schedules SET callStatus = 'ERROR' WHERE id = ?`).run(newId);
+    return newId;
+  }
+
+  registerCall({ scheduleId: newId, extension, from: fromExtension, maxRetries: maxRetriesNum, retryIntervalMs });
+  return newId;
+}
+
 /** PUT - 更新欄位，取消舊 job，以新參數重新排程；回傳 false 表示 id 不存在 */
 export function updateCallSchedule(id: string, params: UpdateCallScheduleParams): boolean {
   const db = getDatabase();
