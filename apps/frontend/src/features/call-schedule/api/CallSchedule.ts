@@ -84,3 +84,17 @@ export async function updateCallSchedule(id: string, form: CallScheduleFormData)
 export async function deleteCallSchedule(id: string): Promise<void> {
   await axios.delete(`${BASE_URL}/${id}`)
 }
+
+export interface ImmediateCallPayload {
+  audioFile: string
+  extension: string
+  notificationContent: string
+  retryInterval: string
+  maxRetries: string
+  notes?: string
+  roomNum?: string
+}
+
+export async function triggerImmediateCall(payload: ImmediateCallPayload): Promise<void> {
+  await axios.post(`${BASE_URL}/immediate-call`, payload)
+}

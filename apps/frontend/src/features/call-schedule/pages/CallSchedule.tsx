@@ -20,6 +20,7 @@ import {
   DeleteOutlineOutlined,
   InfoOutlined,
   Refresh,
+  PhoneOutlined,
 } from '@mui/icons-material'
 import { format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
@@ -29,6 +30,7 @@ import { CallScheduleDialog } from '../components/CallScheduleDialog'
 import { CallScheduleInfoDialog } from '../components/CallScheduleInfoDialog'
 import { CallScheduleFilters } from '../components/CallScheduleFilters'
 import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
+import { ImmediateCallDialog } from '../components/ImmediateCallDialog'
 import {
   fetchCallSchedules,
   deleteCallSchedule,
@@ -175,6 +177,19 @@ export default function CallSchedule() {
               }}
             >
               新增
+            </Button>
+          )}
+        />
+        <ImmediateCallDialog
+          onSuccess={mutate}
+          trigger={(onClick) => (
+            <Button
+              variant="outlined"
+              startIcon={<PhoneOutlined />}
+              onClick={onClick}
+              sx={{ minWidth: '100px' }}
+            >
+              立即撥打
             </Button>
           )}
         />

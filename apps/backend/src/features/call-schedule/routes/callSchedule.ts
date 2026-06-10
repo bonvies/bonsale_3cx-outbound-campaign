@@ -5,6 +5,7 @@ import {
   createCallSchedule,
   updateCallSchedule,
   deleteCallSchedule,
+  triggerImmediateCall,
 } from '../services/callScheduleService';
 
 const router: Router = express.Router();
@@ -76,6 +77,24 @@ router.post('/', (req: Request, res: Response) => {
       return;
     }
     console.error('[CallSchedule] POST error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// POST /api/call-schedule/immediate-call
+router.post('/immediate-call', async (req: Request, res: Response) => {
+  try {
+    const { audioFile, extension, notificationContent, retryInterval, maxRetries = '3', notes = '', roomNum } = req.body;
+
+    if (!audioFile || !extension || !notificationContent || !retryInterval) {
+      res.status(400).json({ success: false, message: 'Missing required fields' });
+      return;
+    }
+
+    const id = await triggerImmediateCall({ audioFile, extension, notificationContent, retryInterval, maxRetries, notes, roomNum });
+    res.json({ success: true, data: { id } });
+  } catch (error) {
+    console.error('[CallSchedule] POST /immediate-call error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
