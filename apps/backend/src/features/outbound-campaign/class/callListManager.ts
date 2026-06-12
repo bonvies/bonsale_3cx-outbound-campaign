@@ -1,5 +1,4 @@
 import redisClient from '../services/redis';
-import { logWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 
 /**
  * 撥號名單管理器
@@ -75,10 +74,10 @@ export class CallListManager {
 
       await redisClient.hSet(callListKey, callListItem.customerId, JSON.stringify(itemData));
       
-      logWithTimestamp(`✅ 成功添加撥號名單項目 - 專案: ${callListItem.projectId}, 客戶: ${callListItem.customerId}, 電話: ${callListItem.phone}`);
+      console.log(`✅ 成功添加撥號名單項目 - 專案: ${callListItem.projectId}, 客戶: ${callListItem.customerId}, 電話: ${callListItem.phone}`);
       return true;
     } catch (error) {
-      errorWithTimestamp('❌ 添加撥號名單項目失敗:', error);
+      console.error('❌ 添加撥號名單項目失敗:', error);
       return false;
     }
   }
@@ -96,7 +95,7 @@ export class CallListManager {
       // 檢查項目是否存在
       const exists = await redisClient.hExists(callListKey, customerId);
       if (!exists) {
-        logWithTimestamp(`⚠️ 撥號名單項目不存在 - 專案: ${projectId}, 客戶: ${customerId}`);
+        console.log(`⚠️ 撥號名單項目不存在 - 專案: ${projectId}, 客戶: ${customerId}`);
         return false;
       }
 
@@ -104,14 +103,14 @@ export class CallListManager {
       const deletedCount = await redisClient.hDel(callListKey, customerId);
       
       if (deletedCount > 0) {
-        logWithTimestamp(`✅ 成功移除撥號名單項目 - 專案: ${projectId}, 客戶: ${customerId}`);
+        console.log(`✅ 成功移除撥號名單項目 - 專案: ${projectId}, 客戶: ${customerId}`);
         return true;
       } else {
-        logWithTimestamp(`❌ 移除撥號名單項目失敗 - 專案: ${projectId}, 客戶: ${customerId}`);
+        console.log(`❌ 移除撥號名單項目失敗 - 專案: ${projectId}, 客戶: ${customerId}`);
         return false;
       }
     } catch (error) {
-      errorWithTimestamp('❌ 移除撥號名單項目失敗:', error);
+      console.error('❌ 移除撥號名單項目失敗:', error);
       return false;
     }
   }
@@ -143,14 +142,14 @@ export class CallListManager {
       }) as number;
 
       if (result > 0) {
-        logWithTimestamp(`🗑️ 成功移除使用過的撥號名單項目 - 專案: ${projectId}, 客戶: ${customerId}`);
+        console.log(`🗑️ 成功移除使用過的撥號名單項目 - 專案: ${projectId}, 客戶: ${customerId}`);
         return true;
       } else {
-        logWithTimestamp(`⚠️ 使用過的撥號名單項目不存在或已被移除 - 專案: ${projectId}, 客戶: ${customerId}`);
+        console.log(`⚠️ 使用過的撥號名單項目不存在或已被移除 - 專案: ${projectId}, 客戶: ${customerId}`);
         return false;
       }
     } catch (error) {
-      errorWithTimestamp(`❌ 移除使用過的撥號名單項目失敗 - 專案: ${projectId}, 客戶: ${customerId}:`, error);
+      console.error(`❌ 移除使用過的撥號名單項目失敗 - 專案: ${projectId}, 客戶: ${customerId}:`, error);
       return false;
     }
   }
@@ -200,7 +199,7 @@ export class CallListManager {
       }) as [string, string] | null;
 
       if (!result || !Array.isArray(result) || result.length !== 2) {
-        logWithTimestamp(`📞 專案 ${projectId} 的撥號名單已空或所有項目正在撥打中`);
+        console.log(`📞 專案 ${projectId} 的撥號名單已空或所有項目正在撥打中`);
         return null;
       }
 
@@ -208,7 +207,7 @@ export class CallListManager {
       
       // 檢查資料是否有效
       if (!customerId || !itemDataStr) {
-        logWithTimestamp(`📞 專案 ${projectId} 獲取到無效的撥號資料`);
+        console.log(`📞 專案 ${projectId} 獲取到無效的撥號資料`);
         return null;
       }
 
@@ -217,8 +216,8 @@ export class CallListManager {
       try {
         itemData = JSON.parse(itemDataStr);
       } catch (parseError) {
-        errorWithTimestamp(`❌ 解析撥號項目 JSON 失敗 - 專案: ${projectId}, 原始資料:`, itemDataStr);
-        errorWithTimestamp('JSON 解析錯誤:', parseError);
+        console.error(`❌ 解析撥號項目 JSON 失敗 - 專案: ${projectId}, 原始資料:`, itemDataStr);
+        console.error('JSON 解析錯誤:', parseError);
         return null;
       }
       
@@ -238,11 +237,11 @@ export class CallListManager {
       callListItem.createdAt = itemData.createdAt;
       callListItem.updatedAt = itemData.updatedAt;
 
-      logWithTimestamp(`📞 標記撥號項目為正在撥打 - 專案: ${projectId}, 客戶: ${callListItem.memberName} (${callListItem.customerId}), 電話: ${callListItem.phone}, 撥打狀態: ${callListItem.dialing}`);
+      console.log(`📞 標記撥號項目為正在撥打 - 專案: ${projectId}, 客戶: ${callListItem.memberName} (${callListItem.customerId}), 電話: ${callListItem.phone}, 撥打狀態: ${callListItem.dialing}`);
       
       return callListItem;
     } catch (error) {
-      errorWithTimestamp('❌ 獲取並標記下一個撥號項目失敗:', error);
+      console.error('❌ 獲取並標記下一個撥號項目失敗:', error);
       return null;
     }
   }
@@ -284,7 +283,7 @@ export class CallListManager {
       
       return count || 0;
     } catch (error) {
-      errorWithTimestamp('❌ 獲取撥號名單數量失敗:', error);
+      console.error('❌ 獲取撥號名單數量失敗:', error);
       return 0;
     }
   }
@@ -301,7 +300,7 @@ export class CallListManager {
       const exists = await redisClient.hExists(callListKey, customerId);
       return exists === 1; // Redis hExists 返回 1 表示存在，0 表示不存在
     } catch (error) {
-      errorWithTimestamp('❌ 檢查客戶是否存在失敗:', error);
+      console.error('❌ 檢查客戶是否存在失敗:', error);
       return false;
     }
   }
@@ -318,7 +317,7 @@ export class CallListManager {
       // 檢查 key 是否存在
       const exists = await redisClient.exists(callListKey);
       if (!exists) {
-        logWithTimestamp(`📭 專案 ${projectId} 的撥號名單已為空`);
+        console.log(`📭 專案 ${projectId} 的撥號名單已為空`);
         return true;
       }
       
@@ -329,14 +328,14 @@ export class CallListManager {
       const result = await redisClient.del(callListKey);
       
       if (result === 1) {
-        logWithTimestamp(`🗑️ 已清空專案 ${projectId} 的撥號名單 (清空 ${countBefore} 筆記錄)`);
+        console.log(`🗑️ 已清空專案 ${projectId} 的撥號名單 (清空 ${countBefore} 筆記錄)`);
         return true;
       } else {
-        errorWithTimestamp(`❌ 清空專案 ${projectId} 撥號名單失敗，Redis 刪除操作未成功 (預期刪除1個key，實際刪除${result}個)`);
+        console.error(`❌ 清空專案 ${projectId} 撥號名單失敗，Redis 刪除操作未成功 (預期刪除1個key，實際刪除${result}個)`);
         return false;
       }
     } catch (error) {
-      errorWithTimestamp(`❌ 清空專案 ${projectId} 撥號名單時發生錯誤:`, error);
+      console.error(`❌ 清空專案 ${projectId} 撥號名單時發生錯誤:`, error);
       return false;
     }
   }
@@ -362,7 +361,7 @@ export class CallListManager {
       } while (cursor !== '0');
       
       if (keys.length === 0) {
-        logWithTimestamp(`📭 沒有找到任何撥號名單需要清空`);
+        console.log(`📭 沒有找到任何撥號名單需要清空`);
         return { success: true, clearedProjects: 0, totalRecords: 0 };
       }
       
@@ -389,14 +388,14 @@ export class CallListManager {
       const isSuccess = successCount === keys.length;
       
       if (isSuccess) {
-        logWithTimestamp(`🗑️ 已清空所有專案的撥號名單 (共 ${keys.length} 個專案，${totalRecords} 筆記錄)`);
+        console.log(`🗑️ 已清空所有專案的撥號名單 (共 ${keys.length} 個專案，${totalRecords} 筆記錄)`);
         return { success: true, clearedProjects: keys.length, totalRecords };
       } else {
-        errorWithTimestamp(`❌ 部分專案撥號名單清空失敗 (成功: ${successCount}/${keys.length})`);
+        console.error(`❌ 部分專案撥號名單清空失敗 (成功: ${successCount}/${keys.length})`);
         return { success: false, clearedProjects: successCount, totalRecords };
       }
     } catch (error) {
-      errorWithTimestamp(`❌ 清空所有專案撥號名單時發生錯誤:`, error);
+      console.error(`❌ 清空所有專案撥號名單時發生錯誤:`, error);
       return { success: false, clearedProjects: 0, totalRecords: 0 };
     }
   }

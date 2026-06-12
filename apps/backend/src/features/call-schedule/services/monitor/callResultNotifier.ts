@@ -1,4 +1,3 @@
-import { errorWithTimestamp } from '@shared-local/util/timestamp';
 
 // ─────────────────────────────────────────────
 // Types
@@ -82,7 +81,7 @@ export function notifyCallResult(payload: CallResultPayload): void {
     try {
       void handler.handle(payload);
     } catch (err) {
-      errorWithTimestamp('[CallResultNotifier] handler error:', err);
+      console.error('[CallResultNotifier] handler error:', err);
     }
   }
 }

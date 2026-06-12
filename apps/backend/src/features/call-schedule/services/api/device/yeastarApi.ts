@@ -2,7 +2,6 @@ import https from 'https';
 import { ApiResult, IPhoneApiService } from '../phoneApiService';
 import { TokenResponseType, callDialType } from '@/features/call-schedule/types/api/yeastarApi';
 import axios, { AxiosInstance } from 'axios';
-import { warnWithTimestamp, errorWithTimestamp } from '@/shared/util/timestamp';
 
 // Yeastar 設備使用自簽憑證，允許跳過驗證
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
@@ -46,11 +45,11 @@ function scheduleTokenRefresh(tokenData: TokenResponseType, username: string, pa
       scheduleTokenRefresh(newTokenData, username, password);
     } catch {
       try {
-        warnWithTimestamp('[yeastarApi] refresh_token 失敗，嘗試重新 fetchToken');
+        console.warn('[yeastarApi] refresh_token 失敗，嘗試重新 fetchToken');
         const newTokenData = await fetchToken(username, password);
         scheduleTokenRefresh(newTokenData, username, password);
       } catch {
-        errorWithTimestamp(`[yeastarApi] fetchToken 失敗，${RETRY_INTERVAL_MS / 1000} 秒後重試`);
+        console.error(`[yeastarApi] fetchToken 失敗，${RETRY_INTERVAL_MS / 1000} 秒後重試`);
         setTimeout(() => scheduleTokenRefresh(tokenData, username, password), RETRY_INTERVAL_MS);
       }
     }

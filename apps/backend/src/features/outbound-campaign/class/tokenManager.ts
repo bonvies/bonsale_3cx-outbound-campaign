@@ -1,5 +1,4 @@
 import jwt from 'jsonwebtoken';
-import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 import { get3cxToken, getCaller } from '../services/api/callControl';
 import { ProjectManager } from './projectManager';
 
@@ -60,7 +59,7 @@ export class TokenManager {
       
       return decoded;
     } catch (error) {
-      errorWithTimestamp('解析 JWT token 失敗:', error);
+      console.error('解析 JWT token 失敗:', error);
       return null;
     }
   }
@@ -76,7 +75,7 @@ export class TokenManager {
       const payload = this.parseJwtPayload(token);
       if (!payload || !payload.exp) {
         // 如果無法解析或沒有過期時間，假設已過期
-        warnWithTimestamp('Token 缺少過期時間資訊，假設已過期');
+        console.warn('Token 缺少過期時間資訊，假設已過期');
         return true;
       }
       
@@ -89,15 +88,15 @@ export class TokenManager {
       
       if (isExpired) {
         const remainingTime = Math.max(0, expirationTime - currentTime);
-        logWithTimestamp(`Token 將在 ${Math.round(remainingTime / 1000 / 60)} 分鐘內過期，需要刷新`);
+        console.log(`Token 將在 ${Math.round(remainingTime / 1000 / 60)} 分鐘內過期，需要刷新`);
       } else {
         const remainingTime = expirationTime - currentTime;
-        logWithTimestamp(`Token 還有 ${Math.round(remainingTime / 1000 / 60)} 分鐘有效`);
+        console.log(`Token 還有 ${Math.round(remainingTime / 1000 / 60)} 分鐘有效`);
       }
       
       return isExpired;
     } catch (error) {
-      errorWithTimestamp('檢查 token 過期時間失敗:', error);
+      console.error('檢查 token 過期時間失敗:', error);
       return true; // 出錯時假設已過期
     }
   }
@@ -110,14 +109,14 @@ export class TokenManager {
   async checkAndRefreshToken(bufferMinutes: number = 5): Promise<boolean> {
     try {
       if (!this.accessToken) {
-        logWithTimestamp('當前沒有 access_token');
+        console.log('當前沒有 access_token');
         return false;
       }
 
       // 使用 getCaller 驗證 token 是否可用
       const callerResult = await getCaller(this.accessToken);
       if (!callerResult.success) {
-        warnWithTimestamp('Token 無法使用（getCaller 驗證失敗），需要重新獲取:', callerResult.error);
+        console.warn('Token 無法使用（getCaller 驗證失敗），需要重新獲取:', callerResult.error);
         return await this.forceRefreshToken();
       }
 
@@ -128,19 +127,19 @@ export class TokenManager {
       }
       
       // Token 即將過期或已過期，嘗試刷新
-      logWithTimestamp('Token 即將過期，開始刷新 access token...');
+      console.log('Token 即將過期，開始刷新 access token...');
       
       const newTokenResult = await get3cxToken(this.clientId, this.clientSecret);
       
       if (!newTokenResult.success) {
-        errorWithTimestamp('刷新 access token 失敗:', newTokenResult.error);
+        console.error('刷新 access token 失敗:', newTokenResult.error);
         
         // 如果刷新失敗，檢查當前 token 是否還沒完全過期且可用
         if (!this.isTokenExpired(this.accessToken, 0)) {
           // 再次驗證 token 是否可用
           const fallbackCallerResult = await getCaller(this.accessToken, 'extension');
           if (fallbackCallerResult.success) {
-            warnWithTimestamp('Token 刷新失敗，但當前 token 仍然有效，繼續使用');
+            console.warn('Token 刷新失敗，但當前 token 仍然有效，繼續使用');
             return true;
           }
         }
@@ -155,11 +154,11 @@ export class TokenManager {
       // 更新 Redis 中的 token
       await ProjectManager.updateProjectAccessToken(this.projectId, access_token);
       
-      logWithTimestamp('Access token 已成功刷新');
+      console.log('Access token 已成功刷新');
       return true;
       
     } catch (error) {
-      errorWithTimestamp('檢查和刷新 token 時發生錯誤:', error);
+      console.error('檢查和刷新 token 時發生錯誤:', error);
       return false;
     }
   }
@@ -182,7 +181,7 @@ export class TokenManager {
       
       return Math.round(remainingTime / 1000 / 60); // 轉換為分鐘
     } catch (error) {
-      errorWithTimestamp('獲取 token 剩餘時間失敗:', error);
+      console.error('獲取 token 剩餘時間失敗:', error);
       return 0;
     }
   }
@@ -193,12 +192,12 @@ export class TokenManager {
    */
   async forceRefreshToken(): Promise<boolean> {
     try {
-      logWithTimestamp('強制刷新 access token...');
+      console.log('強制刷新 access token...');
       
       const newTokenResult = await get3cxToken(this.clientId, this.clientSecret);
       
       if (!newTokenResult.success) {
-        errorWithTimestamp('強制刷新 access token 失敗:', newTokenResult.error);
+        console.error('強制刷新 access token 失敗:', newTokenResult.error);
         return false;
       }
       
@@ -210,11 +209,11 @@ export class TokenManager {
       // 更新 Redis 中的 token
       await ProjectManager.updateProjectAccessToken(this.projectId, access_token);
       
-      logWithTimestamp('Access token 強制刷新成功');
+      console.log('Access token 強制刷新成功');
       return true;
       
     } catch (error) {
-      errorWithTimestamp('強制刷新 token 時發生錯誤:', error);
+      console.error('強制刷新 token 時發生錯誤:', error);
       return false;
     }
   }

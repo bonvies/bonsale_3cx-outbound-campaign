@@ -2,7 +2,6 @@ import express, { Request, Response, Router } from 'express';
 import { WebSocketServer } from 'ws';
 import Project from '../class/project';
 import { ProjectManager } from '../class/projectManager';
-import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from '../../../shared/util/timestamp';
 
 /**
  * 建立外播控制 HTTP API 路由
@@ -59,7 +58,7 @@ export function createOutboundRouter(
     }
 
     try {
-      logWithTimestamp(`[HTTP API] 啟動外播專案: ${project.projectId}`);
+      console.log(`[HTTP API] 啟動外播專案: ${project.projectId}`);
       const projectInstance = await Project.initOutboundProject(project);
       activeProjects.set(project.projectId, projectInstance);
       projectInstance.setBroadcastWebSocket(mainWebSocketServer);
@@ -68,7 +67,7 @@ export function createOutboundRouter(
 
       return res.status(200).json({ success: true, projectId: project.projectId });
     } catch (error) {
-      errorWithTimestamp(`[HTTP API] 啟動外播專案 ${project.projectId} 失敗:`, error);
+      console.error(`[HTTP API] 啟動外播專案 ${project.projectId} 失敗:`, error);
       return res.status(500).json({
         success: false,
         message: error instanceof Error ? error.message : String(error)
@@ -111,16 +110,16 @@ export function createOutboundRouter(
     }
 
     try {
-      logWithTimestamp(`[HTTP API] 停止外播專案: ${projectId}`);
+      console.log(`[HTTP API] 停止外播專案: ${projectId}`);
       const stopSuccess = await Project.stopOutboundProject({ projectId }, activeProjects, mainWebSocketServer);
       if (!stopSuccess) {
-        warnWithTimestamp(`[HTTP API] 停止專案 ${projectId} 失敗`);
+        console.warn(`[HTTP API] 停止專案 ${projectId} 失敗`);
         return res.status(500).json({ success: false, message: `Failed to stop project ${projectId}` });
       }
 
       return res.status(200).json({ success: true, projectId });
     } catch (error) {
-      errorWithTimestamp(`[HTTP API] 停止外播專案 ${projectId} 失敗:`, error);
+      console.error(`[HTTP API] 停止外播專案 ${projectId} 失敗:`, error);
       return res.status(500).json({
         success: false,
         message: error instanceof Error ? error.message : String(error)
@@ -141,7 +140,7 @@ export function createOutboundRouter(
       const projects = await ProjectManager.getAllActiveProjects();
       return res.status(200).json({ success: true, data: projects });
     } catch (error) {
-      errorWithTimestamp('[HTTP API] 取得外播專案列表失敗:', error);
+      console.error('[HTTP API] 取得外播專案列表失敗:', error);
       return res.status(500).json({
         success: false,
         message: error instanceof Error ? error.message : String(error)

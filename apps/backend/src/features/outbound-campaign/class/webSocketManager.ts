@@ -1,5 +1,4 @@
 import { WebSocket } from "ws";
-import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 
 export interface WebSocketManagerOptions {
   url: string;
@@ -45,14 +44,14 @@ export class WebSocketManager {
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        logWithTimestamp(`嘗試連接到 WebSocket: ${this.options.url}`);
+        console.log(`嘗試連接到 WebSocket: ${this.options.url}`);
         
         this.ws = new WebSocket(this.options.url, {
           headers: this.options.headers
         });
 
         this.ws.once('open', async () => {
-          logWithTimestamp('WebSocket 連接成功');
+          console.log('WebSocket 連接成功');
           this.lastMessageTime = Date.now();
           this.reconnectAttempts = 0;
           
@@ -65,14 +64,14 @@ export class WebSocketManager {
             }
             resolve();
           } catch (error) {
-            errorWithTimestamp('執行 onOpen 回調時發生錯誤:', error);
+            console.error('執行 onOpen 回調時發生錯誤:', error);
             resolve(); // 即使回調失敗，連接仍然有效
           }
         });
 
         // 處理pong回應
         this.ws.on('pong', () => {
-          logWithTimestamp('收到心跳pong回應');
+          console.log('收到心跳pong回應');
           this.lastMessageTime = Date.now();
         });
 
@@ -87,7 +86,7 @@ export class WebSocketManager {
 
         // 處理錯誤
         this.ws.once('error', (error) => {
-          errorWithTimestamp('WebSocket 連接錯誤:', error);
+          console.error('WebSocket 連接錯誤:', error);
           this.clearHeartbeat();
           this.ws = null;
           
@@ -105,7 +104,7 @@ export class WebSocketManager {
 
         // 處理關閉
         this.ws.once('close', (code, reason) => {
-          logWithTimestamp(`WebSocket 連接關閉: ${code} - ${reason}`);
+          console.log(`WebSocket 連接關閉: ${code} - ${reason}`);
           this.clearHeartbeat();
           this.ws = null;
           
@@ -115,7 +114,7 @@ export class WebSocketManager {
           
           // 如果是異常關閉（1006）且不是正在重連，則嘗試重連
           // if (code === 1006 && !this.isReconnecting) {
-          //   warnWithTimestamp('檢測到異常關閉（1006），將嘗試重新連接');
+          //   console.warn('檢測到異常關閉（1006），將嘗試重新連接');
           //   this.handleConnectionLost();
           // }
         });
@@ -152,7 +151,7 @@ export class WebSocketManager {
 
       const timeout = setTimeout(() => {
         if (this.ws) {
-          warnWithTimestamp('WebSocket 關閉超時，強制清理連接');
+          console.warn('WebSocket 關閉超時，強制清理連接');
           this.ws = null;
           resolve();
         }
@@ -165,7 +164,7 @@ export class WebSocketManager {
       try {
         this.ws.close(1000, 'Normal closure');
       } catch (error) {
-        errorWithTimestamp('關閉 WebSocket 時發生錯誤:', error);
+        console.error('關閉 WebSocket 時發生錯誤:', error);
         clearTimeout(timeout);
         this.ws = null;
         resolve();
@@ -204,13 +203,13 @@ export class WebSocketManager {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         try {
           this.ws.ping();
-          logWithTimestamp('發送心跳ping保持連接');
+          console.log('發送心跳ping保持連接');
         } catch (error) {
-          errorWithTimestamp('發送ping失敗:', error);
+          console.error('發送ping失敗:', error);
           this.handleConnectionLost();
         }
       } else {
-        logWithTimestamp('WebSocket連接不可用，停止心跳');
+        console.log('WebSocket連接不可用，停止心跳');
         this.clearHeartbeat();
       }
     }, this.options.heartbeatInterval);
@@ -227,14 +226,14 @@ export class WebSocketManager {
     if (this.isReconnecting) return;
     
     if (this.reconnectAttempts >= this.options.maxReconnectAttempts) {
-      errorWithTimestamp('達到最大重連次數，停止重連');
+      console.error('達到最大重連次數，停止重連');
       return;
     }
 
     this.isReconnecting = true;
     this.reconnectAttempts++;
     
-    warnWithTimestamp(`檢測到連接中斷，第 ${this.reconnectAttempts} 次重連嘗試`);
+    console.warn(`檢測到連接中斷，第 ${this.reconnectAttempts} 次重連嘗試`);
     this.clearHeartbeat();
     
     // 指數退避重連延遲
@@ -250,7 +249,7 @@ export class WebSocketManager {
 
   private async reconnectWebSocket(): Promise<void> {
     try {
-      logWithTimestamp('嘗試重新連接 WebSocket...');
+      console.log('嘗試重新連接 WebSocket...');
       
       // 先確保舊連接完全關閉
       if (this.ws) {
@@ -260,7 +259,7 @@ export class WebSocketManager {
       // 重新建立連接
       await this.connect();
       
-      logWithTimestamp('WebSocket 重新連接成功');
+      console.log('WebSocket 重新連接成功');
       this.isReconnecting = false;
       
       // 執行重連回調
@@ -268,12 +267,12 @@ export class WebSocketManager {
         try {
           await this.callbacks.onReconnect();
         } catch (error) {
-          errorWithTimestamp('執行重連回調時發生錯誤:', error);
+          console.error('執行重連回調時發生錯誤:', error);
         }
       }
       
     } catch (error) {
-      errorWithTimestamp('重新連接失敗:', error);
+      console.error('重新連接失敗:', error);
       this.isReconnecting = false;
       this.handleConnectionLost(); // 再次嘗試
     }

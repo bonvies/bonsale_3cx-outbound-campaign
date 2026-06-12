@@ -2,6 +2,7 @@
 // Imports
 // ─────────────────────────────────────────────────────────────────────────────
 
+import './shared/util/patchConsole'; // 必須在所有 import 之前，全域 override console 加入 timestamp
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -50,7 +51,6 @@ import { createServer as createFiasServer } from './features/call-schedule/util/
 import configRouter from './shared/routes/config';
 
 // 工具
-import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from './shared/util/timestamp';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 環境設定 & Feature Flags
@@ -210,21 +210,21 @@ async function recoverActiveProjects(): Promise<void> {
   try {
     const autoRecover = process.env.AUTO_RECOVER_ON_RESTART;
     if (autoRecover === 'true') {
-      logWithTimestamp({ isForce: true }, '🔄 檢查並恢復之前的活躍專案...');
+      console.log('🔄 檢查並恢復之前的活躍專案...');
 
       const allActiveProjects = await ProjectManager.getAllActiveProjects();
 
       if (allActiveProjects.length === 0) {
-        logWithTimestamp({ isForce: true }, '📭 沒有發現需要恢復的專案');
+        console.log('📭 沒有發現需要恢復的專案');
         return;
       }
 
-      logWithTimestamp({ isForce: true }, `📋 發現 ${allActiveProjects.length} 個需要恢復的專案`);
+      console.log(`📋 發現 ${allActiveProjects.length} 個需要恢復的專案`);
 
       for (const savedProject of allActiveProjects) {
         try {
           if (savedProject.state === 'active') {
-            logWithTimestamp({ isForce: true }, `🔄 恢復專案: ${savedProject.projectId} (callFlowId: ${savedProject.callFlowId})`);
+            console.log(`🔄 恢復專案: ${savedProject.projectId} (callFlowId: ${savedProject.callFlowId})`);
 
             // 重新建立 Project 實例（從 Redis 讀取的設定重新初始化）
             const projectInstance = await Project.initOutboundProject({
@@ -240,12 +240,12 @@ async function recoverActiveProjects(): Promise<void> {
             activeProjects.set(savedProject.projectId, projectInstance);
 
             // 清空舊的撥號名單，避免重啟後重複撥打已撥過的號碼
-            logWithTimestamp({ isForce: true }, `🗑️ 清空專案 ${savedProject.projectId} 的舊撥號名單...`);
+            console.log(`🗑️ 清空專案 ${savedProject.projectId} 的舊撥號名單...`);
             const clearResult = await CallListManager.removeProjectCallList(savedProject.projectId);
             if (clearResult) {
-              logWithTimestamp({ isForce: true }, `✅ 專案 ${savedProject.projectId} 舊撥號名單已清空`);
+              console.log(`✅ 專案 ${savedProject.projectId} 舊撥號名單已清空`);
             } else {
-              warnWithTimestamp(`⚠️ 專案 ${savedProject.projectId} 清空撥號名單失敗，但不影響恢復流程`);
+              console.warn(`⚠️ 專案 ${savedProject.projectId} 清空撥號名單失敗，但不影響恢復流程`);
             }
 
             // 注入 WebSocket 廣播引用，讓 Project 可以主動推送狀態給前端
@@ -255,38 +255,38 @@ async function recoverActiveProjects(): Promise<void> {
             // 重新建立與 3CX 的 WebSocket 連線，恢復通話監控
             await projectInstance.create3cxWebSocketConnection(mainWebSocketServer);
 
-            logWithTimestamp({ isForce: true }, `✅ 專案 ${savedProject.projectId} 恢復成功，代理數量: ${savedProject.agentQuantity}`);
+            console.log(`✅ 專案 ${savedProject.projectId} 恢復成功，代理數量: ${savedProject.agentQuantity}`);
           } else {
             // 非 active 狀態（如 stopped）的專案不需要恢復
-            logWithTimestamp(`⏭️ 跳過非活躍專案: ${savedProject.projectId} (狀態: ${savedProject.state})`);
+            console.log(`⏭️ 跳過非活躍專案: ${savedProject.projectId} (狀態: ${savedProject.state})`);
           }
         } catch (error) {
-          errorWithTimestamp(`恢復專案 ${savedProject.projectId} 失敗:`, error);
+          console.error(`恢復專案 ${savedProject.projectId} 失敗:`, error);
           // 單個專案失敗不中斷整體恢復流程
         }
       }
 
-      logWithTimestamp({ isForce: true }, `🎉 專案恢復完成，成功恢復 ${activeProjects.size} 個專案`);
+      console.log(`🎉 專案恢復完成，成功恢復 ${activeProjects.size} 個專案`);
 
       // 恢復完成後，廣播最新的專案列表給所有已連線的前端
       await broadcastAllProjects(mainWebSocketServer);
 
     } else {
       // AUTO_RECOVER_ON_RESTART 未啟用，全新啟動：清空所有舊狀態
-      logWithTimestamp({ isForce: true }, '⏸️ 自動恢復功能未啟用，跳過專案恢復');
+      console.log('⏸️ 自動恢復功能未啟用，跳過專案恢復');
 
       const clearAllResult = await CallListManager.clearAllProjectCallList();
       if (clearAllResult.success) {
-        logWithTimestamp({ isForce: true }, `✅ 成功清空所有專案的舊撥號名單 (共 ${clearAllResult.clearedProjects} 個專案，${clearAllResult.totalRecords} 筆記錄)`);
+        console.log(`✅ 成功清空所有專案的舊撥號名單 (共 ${clearAllResult.clearedProjects} 個專案，${clearAllResult.totalRecords} 筆記錄)`);
       } else {
-        warnWithTimestamp(`⚠️ 清空所有專案的舊撥號名單失敗，但不影響恢復流程`);
+        console.warn(`⚠️ 清空所有專案的舊撥號名單失敗，但不影響恢復流程`);
       }
 
       await ProjectManager.clearAllProjects();
-      logWithTimestamp({ isForce: true }, `✅ 成功清空所有專案緩存`);
+      console.log(`✅ 成功清空所有專案緩存`);
     }
   } catch (error) {
-    errorWithTimestamp('恢復活躍專案時發生錯誤:', error);
+    console.error('恢復活躍專案時發生錯誤:', error);
     // 恢復失敗不應阻止服務器啟動
   }
 }
@@ -306,7 +306,7 @@ async function recoverActiveProjects(): Promise<void> {
  */
 if (ENABLE_OUTBOUND_CAMPAIGN) {
   mainWebSocketServer.on('connection', async (wsClient) => {
-    logWithTimestamp('🔌 WebSocket client connected');
+    console.log('🔌 WebSocket client connected');
 
     // 新連線建立後，立即廣播當前所有專案狀態給該客戶端
     broadcastAllProjects(mainWebSocketServer);
@@ -319,7 +319,7 @@ if (ENABLE_OUTBOUND_CAMPAIGN) {
     const startHeartbeat = () => {
       heartbeatInterval = setInterval(() => {
         if (!isAlive) {
-          logWithTimestamp('💔 WebSocket client ping 超時，終止連線');
+          console.log('💔 WebSocket client ping 超時，終止連線');
           wsClient.terminate();
           return;
         }
@@ -358,18 +358,18 @@ if (ENABLE_OUTBOUND_CAMPAIGN) {
 
           // 停止外播專案：關閉 3CX 連線並從 activeProjects 移除
           case 'stopOutbound':
-            logWithTimestamp('停止 外撥事件:', payload.project);
+            console.log('停止 外撥事件:', payload.project);
             const stopSuccess = await Project.stopOutboundProject(payload.project, activeProjects, mainWebSocketServer);
             if (!stopSuccess) {
-              warnWithTimestamp(`停止專案 ${payload.project.projectId} 失敗`);
+              console.warn(`停止專案 ${payload.project.projectId} 失敗`);
             }
             break;
 
           default:
-            warnWithTimestamp('未知事件:', event);
+            console.warn('未知事件:', event);
         }
       } catch (error) {
-        errorWithTimestamp('WebSocket message handling error:', error);
+        console.error('WebSocket message handling error:', error);
         // 將錯誤廣播給所有連線的前端
         broadcastError(mainWebSocketServer, error);
       }
@@ -377,12 +377,12 @@ if (ENABLE_OUTBOUND_CAMPAIGN) {
 
     // ── 連線關閉 / 錯誤 ─────────────────────────────────────────────────────
     wsClient.on('close', () => {
-      logWithTimestamp('👋 WebSocket client disconnected');
+      console.log('👋 WebSocket client disconnected');
       clearInterval(heartbeatInterval);
     });
 
     wsClient.on('error', (error) => {
-      errorWithTimestamp('WebSocket client error:', error);
+      console.error('WebSocket client error:', error);
       clearInterval(heartbeatInterval);
     });
   });
@@ -417,15 +417,15 @@ httpServer.listen(PORT, async () => {
       startCallMonitorServer();
     }
 
-    logWithTimestamp({ isForce: true }, `🚀 Server is running on port ${PORT}`);
-    logWithTimestamp({ isForce: true }, `🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-    logWithTimestamp({ isForce: true }, `⚡️ 自動外播: ${ENABLE_OUTBOUND_CAMPAIGN ? '啟用' : '停用'}`);
-    logWithTimestamp({ isForce: true }, `⚡️ 語音通知: ${ENABLE_CALL_SCHEDULE ? '啟用' : '停用'}`);
+    console.log(`🚀 Server is running on port ${PORT}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`⚡️ 自動外播: ${ENABLE_OUTBOUND_CAMPAIGN ? '啟用' : '停用'}`);
+    console.log(`⚡️ 語音通知: ${ENABLE_CALL_SCHEDULE ? '啟用' : '停用'}`);
     if (ENABLE_OUTBOUND_CAMPAIGN) { // 只有在自動外播功能啟用時才顯示 WebSocket 相關資訊
-      logWithTimestamp({ isForce: true }, `🔌 WebSocket server is running on port ${PORT}`);
-      logWithTimestamp({ isForce: true }, `🖥️ Bonsale WebHook WebSocket is available on port ${PORT}/api/bonsale/webhook-ws`);
+      console.log(`🔌 WebSocket server is running on port ${PORT}`);
+      console.log(`🖥️ Bonsale WebHook WebSocket is available on port ${PORT}/api/bonsale/webhook-ws`);
     }
-    logWithTimestamp({ isForce: true }, `ℹ️ Version: v2.0.6`);
+    console.log(`ℹ️ Version: v2.0.6`);
 
     if (ENABLE_OUTBOUND_CAMPAIGN) { // 只有在自動外播功能啟用時才從 Redis 恢復外播專案
       // 從 Redis 恢復上次服務器關閉前仍在執行的外播專案
@@ -433,7 +433,7 @@ httpServer.listen(PORT, async () => {
     }
 
   } catch (error) {
-    errorWithTimestamp('啟動服務器失敗:', error);
+    console.error('啟動服務器失敗:', error);
     process.exit(1);
   }
 });
@@ -454,7 +454,7 @@ httpServer.listen(PORT, async () => {
  *   1 → 關閉過程發生錯誤（讓容器管理系統知道有異常）
  */
 async function gracefulShutdown(signal: string): Promise<void> {
-  logWithTimestamp(`收到 ${signal} 信號，正在關閉服務器...`);
+  console.log(`收到 ${signal} 信號，正在關閉服務器...`);
   try {
     if (ENABLE_OUTBOUND_CAMPAIGN) { // 只有在自動外播功能啟用時才關閉 Redis 連線
       // 正常關閉 Redis 連線，確保所有待寫入的資料都已儲存
@@ -462,7 +462,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
     }
     process.exit(0);
   } catch (error) {
-    errorWithTimestamp('關閉服務器失敗:', error);
+    console.error('關閉服務器失敗:', error);
     process.exit(1);
   }
 }
@@ -472,7 +472,7 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // 捕獲所有未處理的 Promise rejection，避免 Node.js 15+ 預設直接終止進程
 process.on('unhandledRejection', (reason, promise) => {
-  errorWithTimestamp('[FATAL] Unhandled Promise Rejection:', { reason, promise });
+  console.error('[FATAL] Unhandled Promise Rejection:', { reason, promise });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -496,7 +496,7 @@ if (ENABLE_CALL_SCHEDULE) { // 只有在語音通知功能啟用時才啟動 FIA
   });
 
   fiasServer.listen(FIAS_PORT, () => {
-    logWithTimestamp({ isForce: true }, `📡 FIAS TCP server is running on port ${FIAS_PORT}`);
+    console.log(`📡 FIAS TCP server is running on port ${FIAS_PORT}`);
   });
 }
 
