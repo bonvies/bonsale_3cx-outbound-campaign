@@ -11,31 +11,11 @@ import dotenv from 'dotenv';
 import { createServer as createHttpServer } from 'http';
 import { WebSocketServer } from 'ws';
 
-// 語音通知 (Call Schedule)
-// - callScheduleRouter    : 提供 REST API 管理語音通知排程（新增、查詢、刪除）
-// - initDatabase          : 初始化 SQLite 資料庫（儲存排程設定）
-// - startCallMonitorServer: 啟動通話狀態監控
-// - recoverPendingSchedules: 服務器重啟後，重新註冊尚未執行的排程任務
-import callScheduleRouter from './features/call-schedule/routes/callSchedule';
-import lakeshoreRouter from './features/call-schedule/routes/lakeshore';
-import { initDatabase } from './features/call-schedule/services/database';
-import { startCallMonitorServer } from './features/call-schedule/services/callMonitorService';
-import { recoverPendingSchedules } from './features/call-schedule/services/callScheduleService';
-import { phoneApiService } from './features/call-schedule/services/api/phoneApiService';
-
-// FIAS (Front desk Information and Administration System)
-// - 接收飯店 PMS 系統透過 TCP 傳送的房客資訊，觸發語音通知撥號
-// - fiasHandler    : 解析並處理 FIAS 訊息
-// - createFiasServer: 建立 TCP 伺服器監聽 FIAS 連線
-import fiasHandler from './features/call-schedule/components/fiasHandler';
-import { createServer as createFiasServer } from './features/call-schedule/util/fias';
-
 // 共用設定 API
 import configRouter from './shared/routes/config';
 
-// 自動外播 (Outbound Campaign) 模組採 dynamic import，僅 ENABLE_OUTBOUND_CAMPAIGN=true 時載入。
-// 原因：outbound-campaign 部分模組（如 callControl.ts）含頂層環境變數驗證，
-// 停用時若靜態 import 會因缺少 3CX 環境變數而在模組載入階段直接崩潰。
+// 自動外播 (Outbound Campaign) 與 語音通知 (Call Schedule) 模組均採 dynamic import，
+// 僅對應 feature flag 為 true 時才載入，避免停用時因缺少環境變數而在模組載入階段崩潰。
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 環境設定 & Feature Flags
@@ -113,11 +93,15 @@ if (ENABLE_OUTBOUND_CAMPAIGN) {
   app.use('/api/outbound', outboundControlRouter);
 }
 
+// 語音通知路由：先以 placeholder router 佔位，確保排在 404 handler 之前。
+// setupCallSchedule() 完成 dynamic import 後，才會將實際路由掛入 placeholder。
+let callScheduleRouter_: express.Router | null = null;
+let lakeshoreRouter_: express.Router | null = null;
 if (ENABLE_CALL_SCHEDULE) {
-  // 語音通知排程 API：/api/call-schedule/*
-  app.use('/api/call-schedule', callScheduleRouter);
-  // Lakeshore Hotel 入單 API：/api/lakeshore/*
-  app.use('/api/lakeshore', lakeshoreRouter);
+  callScheduleRouter_ = express.Router();
+  lakeshoreRouter_ = express.Router();
+  app.use('/api/call-schedule', callScheduleRouter_);
+  app.use('/api/lakeshore', lakeshoreRouter_);
 }
 
 // 根路由：健康檢查 / 版本確認
@@ -395,6 +379,82 @@ async function setupOutboundCampaign(): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 語音通知 (Call Schedule)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 動態載入並初始化語音通知功能。
+ *
+ * 完成以下工作：
+ * 1. 動態載入所有 call-schedule 模組
+ * 2. 將實際路由填入 placeholder router
+ * 3. 初始化 SQLite 資料庫
+ * 4. 初始化電話設備（失敗時僅 log，不中斷啟動）
+ * 5. 恢復重啟前未執行的排程任務
+ * 6. 啟動通話狀態監控（失敗時僅 log，不中斷啟動）
+ * 7. 啟動 FIAS TCP 伺服器
+ */
+async function setupCallSchedule(): Promise<void> {
+  const [
+    { default: callScheduleRouter },
+    { default: lakeshoreRouter },
+    { initDatabase },
+    { startCallMonitorServer },
+    { recoverPendingSchedules },
+    { phoneApiService },
+    { default: fiasHandler },
+    { createServer: createFiasServer },
+  ] = await Promise.all([
+    import('./features/call-schedule/routes/callSchedule'),
+    import('./features/call-schedule/routes/lakeshore'),
+    import('./features/call-schedule/services/database'),
+    import('./features/call-schedule/services/callMonitorService'),
+    import('./features/call-schedule/services/callScheduleService'),
+    import('./features/call-schedule/services/api/phoneApiService'),
+    import('./features/call-schedule/components/fiasHandler'),
+    import('./features/call-schedule/util/fias'),
+  ]);
+
+  // ── 路由填入 placeholder ──────────────────────────────────────────────────
+  callScheduleRouter_!.use('/', callScheduleRouter);
+  lakeshoreRouter_!.use('/', lakeshoreRouter);
+
+  // ── 資料庫初始化 ──────────────────────────────────────────────────────────
+  await initDatabase();
+
+  // ── 電話設備初始化 ────────────────────────────────────────────────────────
+  // 失敗時僅 log，不中斷啟動——排程與監控照常啟動，撥號時才回報設備錯誤
+  try {
+    await phoneApiService.init?.();
+  } catch (error) {
+    console.error('❌ [CallSchedule] 話機設備初始化失敗，排程將繼續啟動但無法撥出電話:', error);
+  }
+
+  // ── 排程恢復 ──────────────────────────────────────────────────────────────
+  recoverPendingSchedules();
+
+  // ── 通話狀態監控 ──────────────────────────────────────────────────────────
+  // 失敗時僅 log，不中斷啟動——設備未設定時監控無法啟動，但 server 照常運行
+  try {
+    startCallMonitorServer();
+  } catch (error) {
+    console.error('❌ [CallSchedule] 通話監控啟動失敗:', error);
+  }
+
+  // ── FIAS TCP 伺服器 ───────────────────────────────────────────────────────
+  // 監聽飯店 PMS 系統透過 TCP 傳入的 FIAS 訊息，觸發對應的語音通知撥號。
+  const fiasServer = createFiasServer(async (msg, conn) => {
+    console.log('--- FIAS TCP 服務器收到訊息 ---');
+    console.log('訊息內容:', msg);
+    fiasHandler(msg, conn);
+  });
+
+  fiasServer.listen(FIAS_PORT, () => {
+    console.log(`📡 FIAS TCP server is running on port ${FIAS_PORT}`);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 啟動伺服器
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -410,25 +470,8 @@ httpServer.listen(PORT, async () => {
       await setupOutboundCampaign();
     }
 
-    if (ENABLE_CALL_SCHEDULE) { // 只有在語音通知功能啟用時才初始化資料庫與啟動相關服務
-      // 初始化 SQLite 資料庫，用於儲存語音通知排程設定
-      await initDatabase();
-      // 初始化電話設備（部分設備需要取得 token 或建立連線，例如 Yeastar）
-      // 失敗時僅 log，不中斷啟動——排程與監控照常啟動，撥號時才回報設備錯誤
-      try {
-        await phoneApiService.init?.();
-      } catch (error) {
-        console.error('❌ [CallSchedule] 話機設備初始化失敗，排程將繼續啟動但無法撥出電話:', error);
-      }
-      // 重新載入服務器重啟前尚未執行的排程任務
-      recoverPendingSchedules();
-      // 啟動通話狀態監控
-      // 失敗時僅 log，不中斷啟動——設備未設定時監控無法啟動，但 server 照常運行
-      try {
-        startCallMonitorServer();
-      } catch (error) {
-        console.error('❌ [CallSchedule] 通話監控啟動失敗:', error);
-      }
+    if (ENABLE_CALL_SCHEDULE) {
+      await setupCallSchedule();
     }
 
     console.log(`🚀 Server is running on port ${PORT}`);
@@ -482,30 +525,5 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('unhandledRejection', (reason, promise) => {
   console.error('[FATAL] Unhandled Promise Rejection:', { reason, promise });
 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FIAS TCP 伺服器（語音通知功能使用）
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * FIAS (Front desk Information and Administration System) TCP 伺服器
- *
- * 監聽飯店 PMS 系統透過 TCP 傳入的 FIAS 訊息（如房客 Check-in / Wake-up Call 請求）。
- * 收到訊息後交由 fiasHandler 解析並觸發對應的語音通知撥號。
- *
- * 僅在 ENABLE_CALL_SCHEDULE=true 時啟動（語音通知功能的一部分）。
- * 監聽埠由 FIAS_PORT 環境變數控制，預設 4021。
- */
-if (ENABLE_CALL_SCHEDULE) {
-  const fiasServer = createFiasServer(async (msg, conn) => {
-    console.log('--- FIAS TCP 服務器收到訊息 ---');
-    console.log('訊息內容:', msg);
-    fiasHandler(msg, conn);
-  });
-
-  fiasServer.listen(FIAS_PORT, () => {
-    console.log(`📡 FIAS TCP server is running on port ${FIAS_PORT}`);
-  });
-}
 
 export default app;
