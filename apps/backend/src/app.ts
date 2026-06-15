@@ -410,11 +410,21 @@ httpServer.listen(PORT, async () => {
       // 初始化 SQLite 資料庫，用於儲存語音通知排程設定
       await initDatabase();
       // 初始化電話設備（部分設備需要取得 token 或建立連線，例如 Yeastar）
-      await phoneApiService.init?.();
+      // 失敗時僅 log，不中斷啟動——排程與監控照常啟動，撥號時才回報設備錯誤
+      try {
+        await phoneApiService.init?.();
+      } catch (error) {
+        console.error('❌ [CallSchedule] 話機設備初始化失敗，排程將繼續啟動但無法撥出電話:', error);
+      }
       // 重新載入服務器重啟前尚未執行的排程任務
       recoverPendingSchedules();
       // 啟動輪詢 OM API 的背景監控，追蹤通話撥出結果
-      startCallMonitorServer();
+      // 失敗時僅 log，不中斷啟動——設備未設定時監控無法啟動，但 server 照常運行
+      try {
+        startCallMonitorServer();
+      } catch (error) {
+        console.error('❌ [CallSchedule] 通話監控啟動失敗:', error);
+      }
     }
 
     console.log(`🚀 Server is running on port ${PORT}`);
