@@ -4,7 +4,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { getDatabase } from './database';
 import { phoneApiService } from './api/phoneApiService';
 import { registerCall, cancelScheduleJobs } from './callMonitorService';
-import { getBonsaleCompanySys } from '@shared-local/services/api/bonsale';
+import { getSiteTimezone } from '@call-schedule/util/timezone';
 
 // ─────────────────────────────────────────────
 // Types
@@ -90,11 +90,6 @@ function rowToRecord(row: DbRow, timezone = 'UTC') {
   };
 }
 
-async function getTimezone(): Promise<string> {
-  const bonsaleCompanySys = await getBonsaleCompanySys();
-  return bonsaleCompanySys?.data?.timezoneIANA ?? 'UTC';
-}
-
 /** 建立並登記 node-schedule job（CREATE 和 UPDATE 共用） */
 function scheduleCallJob(
   id: string,
@@ -103,7 +98,7 @@ function scheduleCallJob(
   maxRetriesNum: number,
   retryIntervalMs: number,
 ): void {
-  const db            = getDatabase();
+  const db = getDatabase();
   const fromExtension = process.env.OM_CALL_FROM_EXTENSION ?? '9038';
 
   console.log(`[CallScheduleService] Scheduling job ${id} at ${jobDate.toISOString()}`);
@@ -168,7 +163,7 @@ export async function listCallSchedules(params: ListCallSchedulesParams): Promis
     `SELECT COUNT(*) as count FROM call_schedules ${whereClause}`
   ).get(...queryParams) as { count: number };
 
-  const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const limitNum = Math.max(1, parseInt(limit, 10) || 10);
   const paginatedParams = [...queryParams, limitNum, (pageNum - 1) * limitNum];
 
@@ -176,16 +171,16 @@ export async function listCallSchedules(params: ListCallSchedulesParams): Promis
     `SELECT * FROM call_schedules ${whereClause} ORDER BY ${sortField} ${sortOrder} LIMIT ? OFFSET ?`
   ).all(...paginatedParams) as DbRow[];
 
-  const timezone = await getTimezone();
+  const timezone = await getSiteTimezone();
   return { data: rows.map(row => rowToRecord(row, timezone)), total: countResult.count };
 }
 
 /** GET by id */
 export async function getCallScheduleById(id: string): Promise<CallScheduleRecord | null> {
-  const db  = getDatabase();
+  const db = getDatabase();
   const row = db.prepare('SELECT * FROM call_schedules WHERE id = ?').get(id) as DbRow | undefined;
   if (!row) return null;
-  const timezone = await getTimezone();
+  const timezone = await getSiteTimezone();
   return rowToRecord(row, timezone);
 }
 
@@ -197,12 +192,12 @@ export function createCallSchedule(params: CreateCallScheduleParams): string {
     throw new Error('date must be in the future');
   }
 
-  const db               = getDatabase();
-  const newId            = randomUUID();
-  const createdAt        = new Date().toISOString();
-  const maxRetriesNum    = Math.max(0, parseInt(maxRetries, 10) || 0);
+  const db = getDatabase();
+  const newId = randomUUID();
+  const createdAt = new Date().toISOString();
+  const maxRetriesNum = Math.max(0, parseInt(maxRetries, 10) || 0);
   const retryIntervalMin = Math.max(0, parseFloat(retryInterval) || 0);
-  const retryIntervalMs  = retryIntervalMin * 60 * 1000;
+  const retryIntervalMs = retryIntervalMin * 60 * 1000;
 
   db.prepare(`
     INSERT INTO call_schedules
@@ -228,13 +223,13 @@ export type TriggerImmediateCallParams = {
 export async function triggerImmediateCall(params: TriggerImmediateCallParams): Promise<string> {
   const { audioFile, extension, notificationContent, retryInterval, maxRetries, notes = '', roomNum } = params;
 
-  const db               = getDatabase();
-  const newId            = randomUUID();
-  const createdAt        = new Date().toISOString();
-  const maxRetriesNum    = Math.max(0, parseInt(maxRetries, 10) || 0);
+  const db = getDatabase();
+  const newId = randomUUID();
+  const createdAt = new Date().toISOString();
+  const maxRetriesNum = Math.max(0, parseInt(maxRetries, 10) || 0);
   const retryIntervalMin = Math.max(0, parseFloat(retryInterval) || 0);
-  const retryIntervalMs  = retryIntervalMin * 60 * 1000;
-  const fromExtension    = process.env.OM_CALL_FROM_EXTENSION ?? '9038';
+  const retryIntervalMs = retryIntervalMin * 60 * 1000;
+  const fromExtension = process.env.OM_CALL_FROM_EXTENSION ?? '9038';
 
   db.prepare(`
     INSERT INTO call_schedules
@@ -263,7 +258,7 @@ export function updateCallSchedule(id: string, params: UpdateCallScheduleParams)
   }
 
   const retryIntervalMin = retryInterval !== undefined ? Math.max(0, parseFloat(retryInterval) || 0) : undefined;
-  const maxRetriesNum    = maxRetries    !== undefined ? Math.max(0, parseInt(maxRetries, 10) || 0)  : undefined;
+  const maxRetriesNum = maxRetries !== undefined ? Math.max(0, parseInt(maxRetries, 10) || 0) : undefined;
 
   db.prepare(`
     UPDATE call_schedules SET
@@ -312,7 +307,7 @@ export function deleteCallSchedule(id: string): void {
 
 /** 重啟恢復 - 將 DB 中未完成的排程重新登記 job */
 export function recoverPendingSchedules(): void {
-  const db  = getDatabase();
+  const db = getDatabase();
   const now = new Date().toISOString();
 
   // 已過期但仍是「排程中」→ 標記為錯誤，寫入原因

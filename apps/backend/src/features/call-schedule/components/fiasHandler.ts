@@ -2,7 +2,7 @@ import { fromZonedTime } from 'date-fns-tz';
 import { FiasConn, FiasMessage } from '@call-schedule/types/fias/fiasTypes';
 import { getDatabase } from '@call-schedule/services/database';
 import { createCallSchedule, deleteCallSchedule } from '@call-schedule/services/callScheduleService';
-import { getBonsaleCompanySys } from '@shared-local/services/api/bonsale';
+import { getSiteTimezone } from '@call-schedule/util/timezone';
 
 /**
  * FIAS 協定沒有前端，PMS 送來的是飯店當地時間（TI/DT），
@@ -13,25 +13,23 @@ import { getBonsaleCompanySys } from '@shared-local/services/api/bonsale';
  * 若 DT 未提供，預設使用當天；若時間已過則排明天
  */
 async function parseFiasDate(ti: string, dt?: string): Promise<Date> {
-  const bonsaleCompanySys = await getBonsaleCompanySys();
-  const timezone = bonsaleCompanySys?.data?.timezoneIANA ?? 'UTC';
-
-  const hour   = parseInt(ti.substring(0, 2), 10);
+  const timezone = await getSiteTimezone();
+  const hour = parseInt(ti.substring(0, 2), 10);
   const minute = parseInt(ti.substring(2, 4), 10);
 
   let year: number, month: number, day: number;
 
   if (dt && dt.length >= 6) {
     // FIAS DT 格式：YYMMDD
-    year  = 2000 + parseInt(dt.substring(0, 2), 10);
+    year = 2000 + parseInt(dt.substring(0, 2), 10);
     month = parseInt(dt.substring(2, 4), 10) - 1; // JS month 從 0 開始
-    day   = parseInt(dt.substring(4, 6), 10);
+    day = parseInt(dt.substring(4, 6), 10);
   } else {
     // 未提供日期：用今天，若已過則用明天
     const now = new Date();
-    year  = now.getFullYear();
+    year = now.getFullYear();
     month = now.getMonth();
-    day   = now.getDate();
+    day = now.getDate();
 
     const candidate = fromZonedTime(new Date(year, month, day, hour, minute, 0), timezone);
     if (candidate <= new Date()) {
@@ -77,14 +75,14 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
 
     // ── WR：叫醒預約 ──────────────────────────
     case 'WR': {
-      const roomNumber       = msg.fields.RN;
-      const timeStr          = msg.fields.TI;  // HHMM
-      const dateStr          = msg.fields.DT;  // YYMMDD（可選）
+      const roomNumber = msg.fields.RN;
+      const timeStr = msg.fields.TI;  // HHMM
+      const dateStr = msg.fields.DT;  // YYMMDD（可選）
       const retryIntervalMin = msg.fields.RI ?? '5';
-      const maxRetries       = msg.fields.MR ?? '3';
+      const maxRetries = msg.fields.MR ?? '3';
 
       const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
-      const extension       = extensionPrefix + roomNumber;
+      const extension = extensionPrefix + roomNumber;
 
       try {
         const jobDate = await parseFiasDate(timeStr, dateStr);
@@ -111,14 +109,14 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
     // ── WD：取消叫醒 ──────────────────────────
     case 'WD': {
       const roomNumber = msg.fields.RN;
-      const timeStr    = msg.fields.TI;
-      const dateStr    = msg.fields.DT;
+      const timeStr = msg.fields.TI;
+      const dateStr = msg.fields.DT;
 
       const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
-      const extension       = extensionPrefix + roomNumber;
+      const extension = extensionPrefix + roomNumber;
 
       try {
-        const jobDate    = await parseFiasDate(timeStr, dateStr);
+        const jobDate = await parseFiasDate(timeStr, dateStr);
         const scheduleId = findScheduleId(extension, jobDate.toISOString());
 
         if (scheduleId) {
