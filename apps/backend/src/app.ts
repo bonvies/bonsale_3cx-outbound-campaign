@@ -11,27 +11,10 @@ import dotenv from 'dotenv';
 import { createServer as createHttpServer } from 'http';
 import { WebSocketServer } from 'ws';
 
-// 自動外播 (Outbound Campaign)
-// - bonsaleRouter     : 提供 REST API 給前端操作外播專案（啟動、停止、查詢）
-// - clientWsWebHook   : 接收 3CX 推送的通話事件（WebSocket Webhook）
-// - initRedis/closeRedis : 啟動與關閉 Redis 連線（儲存外播專案狀態）
-// - broadcastAllProjects : 廣播所有專案狀態給前端儀表板
-// - broadcastError    : 廣播錯誤訊息給前端儀表板
-// - ProjectManager    : 管理所有外播專案的生命週期（建立、停止、從 Redis 恢復）
-// - CallListManager   : 管理各專案的撥號名單（Redis 中的通話佇列）
-// - Project           : 單一外播專案的核心類別（3CX 連線、撥號、狀態追蹤）
-import { router as bonsaleRouter, clientWsWebHook } from './features/outbound-campaign/routes/bonsale';
-import { createOutboundRouter } from './features/outbound-campaign/routes/outbound';
-import { initRedis, closeRedis } from './features/outbound-campaign/services/redis';
-import { broadcastAllProjects, broadcastError } from './features/outbound-campaign/components/broadcast';
-import { ProjectManager } from './features/outbound-campaign/class/projectManager';
-import { CallListManager } from './features/outbound-campaign/class/callListManager';
-import Project from './features/outbound-campaign/class/project';
-
-// 語音通知 (Morning Call)
+// 語音通知 (Call Schedule)
 // - callScheduleRouter    : 提供 REST API 管理語音通知排程（新增、查詢、刪除）
 // - initDatabase          : 初始化 SQLite 資料庫（儲存排程設定）
-// - startCallMonitorServer: 啟動 NewRock OM API 狀態監控（輪詢通話結果）
+// - startCallMonitorServer: 啟動通話狀態監控
 // - recoverPendingSchedules: 服務器重啟後，重新註冊尚未執行的排程任務
 import callScheduleRouter from './features/call-schedule/routes/callSchedule';
 import lakeshoreRouter from './features/call-schedule/routes/lakeshore';
@@ -50,7 +33,9 @@ import { createServer as createFiasServer } from './features/call-schedule/util/
 // 共用設定 API
 import configRouter from './shared/routes/config';
 
-// 工具
+// 自動外播 (Outbound Campaign) 模組採 dynamic import，僅 ENABLE_OUTBOUND_CAMPAIGN=true 時載入。
+// 原因：outbound-campaign 部分模組（如 callControl.ts）含頂層環境變數驗證，
+// 停用時若靜態 import 會因缺少 3CX 環境變數而在模組載入階段直接崩潰。
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 環境設定 & Feature Flags
@@ -111,29 +96,23 @@ const httpServer = createHttpServer(app);
  */
 const mainWebSocketServer = new WebSocketServer({ noServer: true });
 
-/**
- * 活躍外播專案的實例映射表
- *
- * key   : projectId（專案唯一識別碼）
- * value : Project 實例（持有 3CX WebSocket 連線與撥號狀態）
- *
- * 用途：前端發送 stopOutbound 事件時，從此 Map 取得實例並正確關閉連線。
- * 注意：此為記憶體狀態，服務器重啟後會清空，需透過 recoverActiveProjects() 重建。
- */
-const activeProjects = new Map<string, Project>();
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 路由掛載（依功能開關決定是否啟用）
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.use('/api/config', configRouter);  // 功能設定 API（無條件掛載，前端啟動時需要）
 
+// 自動外播路由：先以 placeholder router 佔位，確保排在 404 handler 之前。
+// setupOutboundCampaign() 完成 dynamic import 後，才會將實際路由掛入 placeholder。
+let outboundBonsaleRouter: express.Router | null = null;
+let outboundControlRouter: express.Router | null = null;
 if (ENABLE_OUTBOUND_CAMPAIGN) {
-  // 自動外播 API：/api/bonsale/*
-  app.use('/api/bonsale', bonsaleRouter);
-  // 外播控制 HTTP API：/api/outbound/*（供外部系統呼叫，等同 WebSocket startOutbound/stopOutbound）
-  app.use('/api/outbound', createOutboundRouter(activeProjects, mainWebSocketServer));
+  outboundBonsaleRouter = express.Router();
+  outboundControlRouter = express.Router();
+  app.use('/api/bonsale', outboundBonsaleRouter);
+  app.use('/api/outbound', outboundControlRouter);
 }
+
 if (ENABLE_CALL_SCHEDULE) {
   // 語音通知排程 API：/api/call-schedule/*
   app.use('/api/call-schedule', callScheduleRouter);
@@ -162,30 +141,21 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   });
 });
 
-/**
- * WebSocket 升級請求分流
- *
- * HTTP Upgrade 請求進來時，根據路徑決定交給哪個 WebSocket Server 處理：
- *   /api/bonsale/WebHook → clientWsWebHook（接收 3CX 通話事件）
- *   其他路徑             → mainWebSocketServer（前端儀表板連線）
- *
- * 若自動外播功能停用，所有 WebSocket 升級請求一律拒絕（socket.destroy()）。
- */
-httpServer.on('upgrade', (request, socket, head) => {
-  const pathname = new URL(request.url!, `http://${request.headers.host}`).pathname;
+// ─────────────────────────────────────────────────────────────────────────────
+// WebSocket 升級請求分流
+// ─────────────────────────────────────────────────────────────────────────────
 
-  if (ENABLE_OUTBOUND_CAMPAIGN && pathname === '/api/bonsale/WebHook') {
-    // 3CX 推送通話狀態的 Webhook WebSocket
-    clientWsWebHook.handleUpgrade(request, socket, head, (websocket) => {
-      clientWsWebHook.emit('connection', websocket, request);
-    });
-  } else if (ENABLE_OUTBOUND_CAMPAIGN) {
-    // 前端儀表板的即時通訊 WebSocket
-    mainWebSocketServer.handleUpgrade(request, socket, head, (websocket) => {
-      mainWebSocketServer.emit('connection', websocket, request);
-    });
+/**
+ * setupOutboundCampaign() 完成後由該函數設定。
+ * 負責將 WebSocket upgrade 請求分流到 clientWsWebHook 或 mainWebSocketServer。
+ * 未設定（ENABLE_OUTBOUND_CAMPAIGN=false 或 setup 尚未完成）時一律拒絕連線。
+ */
+let outboundUpgradeHandler: ((req: import('http').IncomingMessage, socket: import('stream').Duplex, head: Buffer) => void) | null = null;
+
+httpServer.on('upgrade', (request, socket, head) => {
+  if (outboundUpgradeHandler) {
+    outboundUpgradeHandler(request, socket, head);
   } else {
-    // 自動外播功能停用時，拒絕所有 WebSocket 連線
     socket.destroy();
   }
 });
@@ -194,19 +164,163 @@ httpServer.on('upgrade', (request, socket, head) => {
 // 自動外播 (Outbound Campaign)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// setupOutboundCampaign() 完成後設定，供 gracefulShutdown 使用
+let outboundCloseRedis: (() => Promise<void>) | null = null;
+
 /**
- * 自動恢復之前的活躍外播專案
+ * 動態載入並初始化自動外播功能。
  *
- * 服務器重啟後，從 Redis 讀取上次的活躍專案清單，重新建立 Project 實例與
- * 3CX WebSocket 連線，讓外播得以從中斷點繼續進行。
+ * 使用 dynamic import 確保 outbound-campaign 模組（含頂層 env 驗證的 callControl.ts）
+ * 只在 ENABLE_OUTBOUND_CAMPAIGN=true 時才被載入，避免停用時因缺少 3CX 環境變數而崩潰。
  *
- * 行為取決於 AUTO_RECOVER_ON_RESTART 環境變數：
- *   true  → 逐一恢復 state==='active' 的專案（清空舊撥號名單後重新連線）
- *   false → 清空所有 Redis 中的專案狀態與撥號名單（全新啟動）
- *
- * 單一專案恢復失敗不會中斷整體恢復流程，確保其他專案仍可正常啟動。
+ * 完成以下工作：
+ * 1. 動態載入所有 outbound-campaign 模組
+ * 2. 將實際路由填入 placeholder router
+ * 3. 設定 WebSocket upgrade 分流與連線處理
+ * 4. 初始化 Redis 連線
+ * 5. 恢復重啟前的活躍外播專案
  */
-async function recoverActiveProjects(): Promise<void> {
+async function setupOutboundCampaign(): Promise<void> {
+  const [
+    { router: bonsaleRouter, clientWsWebHook },
+    { createOutboundRouter },
+    { initRedis, closeRedis },
+    { broadcastAllProjects, broadcastError },
+    { ProjectManager },
+    { CallListManager },
+    { default: Project },
+  ] = await Promise.all([
+    import('./features/outbound-campaign/routes/bonsale'),
+    import('./features/outbound-campaign/routes/outbound'),
+    import('./features/outbound-campaign/services/redis'),
+    import('./features/outbound-campaign/components/broadcast'),
+    import('./features/outbound-campaign/class/projectManager'),
+    import('./features/outbound-campaign/class/callListManager'),
+    import('./features/outbound-campaign/class/project'),
+  ]);
+
+  type ProjectInstance = InstanceType<typeof Project>;
+  const activeProjects = new Map<string, ProjectInstance>();
+
+  // ── 路由填入 placeholder ──────────────────────────────────────────────────
+  outboundBonsaleRouter!.use('/', bonsaleRouter);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  outboundControlRouter!.use('/', createOutboundRouter(activeProjects as any, mainWebSocketServer));
+
+  // ── WebSocket upgrade 分流 ────────────────────────────────────────────────
+  outboundUpgradeHandler = (request, socket, head) => {
+    const pathname = new URL(request.url!, `http://${request.headers.host}`).pathname;
+
+    if (pathname === '/api/bonsale/WebHook') {
+      // 3CX 推送通話狀態的 Webhook WebSocket
+      clientWsWebHook.handleUpgrade(request, socket, head, (websocket) => {
+        clientWsWebHook.emit('connection', websocket, request);
+      });
+    } else {
+      // 前端儀表板的即時通訊 WebSocket
+      mainWebSocketServer.handleUpgrade(request, socket, head, (websocket) => {
+        mainWebSocketServer.emit('connection', websocket, request);
+      });
+    }
+  };
+
+  // ── 前端儀表板 WebSocket 連線處理 ─────────────────────────────────────────
+  /**
+   * 每當前端建立 WebSocket 連線時：
+   * 1. 立即推送當前所有專案狀態
+   * 2. 啟動心跳機制（每 60 秒 ping 一次）
+   * 3. 監聽前端送來的操作事件（startOutbound / stopOutbound）
+   */
+  mainWebSocketServer.on('connection', async (wsClient) => {
+    console.log('🔌 WebSocket client connected');
+
+    // 新連線建立後，立即廣播當前所有專案狀態給該客戶端
+    broadcastAllProjects(mainWebSocketServer);
+
+    // ── 心跳機制 ──────────────────────────────────────────────────────────
+    let isAlive = true;
+    let heartbeatInterval: NodeJS.Timeout;
+
+    const startHeartbeat = () => {
+      heartbeatInterval = setInterval(() => {
+        if (!isAlive) {
+          console.log('💔 WebSocket client ping 超時，終止連線');
+          wsClient.terminate();
+          return;
+        }
+        isAlive = false;
+        wsClient.ping();
+      }, 60000);
+    };
+
+    startHeartbeat();
+    wsClient.on('pong', () => { isAlive = true; });
+
+    // ── 訊息處理 ──────────────────────────────────────────────────────────
+    wsClient.on('message', async (message) => {
+      try {
+        const { event, payload } = JSON.parse(message.toString());
+
+        switch (event) {
+          // 前端發送的應用層心跳
+          case 'ping':
+            wsClient.send(JSON.stringify({ event: 'pong', timestamp: Date.now() }));
+            break;
+
+          // 啟動外播專案：初始化 Project 實例並建立 3CX WebSocket 連線
+          case 'startOutbound':
+            console.log('Received startOutbound event with payload:', payload);
+            const projectInstance = await Project.initOutboundProject(payload.project);
+            activeProjects.set(payload.project.projectId, projectInstance);
+            projectInstance.setBroadcastWebSocket(mainWebSocketServer);
+            projectInstance.setOnCompleteStop(() => activeProjects.delete(payload.project.projectId));
+            await projectInstance.create3cxWebSocketConnection(mainWebSocketServer);
+            break;
+
+          // 停止外播專案：關閉 3CX 連線並從 activeProjects 移除
+          case 'stopOutbound':
+            console.log('停止 外撥事件:', payload.project);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const stopSuccess = await Project.stopOutboundProject(payload.project, activeProjects as any, mainWebSocketServer);
+            if (!stopSuccess) {
+              console.warn(`停止專案 ${payload.project.projectId} 失敗`);
+            }
+            break;
+
+          default:
+            console.warn('未知事件:', event);
+        }
+      } catch (error) {
+        console.error('WebSocket message handling error:', error);
+        broadcastError(mainWebSocketServer, error);
+      }
+    });
+
+    // ── 連線關閉 / 錯誤 ───────────────────────────────────────────────────
+    wsClient.on('close', () => {
+      console.log('👋 WebSocket client disconnected');
+      clearInterval(heartbeatInterval);
+    });
+
+    wsClient.on('error', (error) => {
+      console.error('WebSocket client error:', error);
+      clearInterval(heartbeatInterval);
+    });
+  });
+
+  // ── Redis 初始化 ──────────────────────────────────────────────────────────
+  outboundCloseRedis = closeRedis;
+  await initRedis();
+
+  // ── 恢復重啟前的活躍外播專案 ─────────────────────────────────────────────
+  /**
+   * 服務器重啟後，從 Redis 讀取上次的活躍專案清單，重新建立 Project 實例與
+   * 3CX WebSocket 連線，讓外播得以從中斷點繼續進行。
+   *
+   * 行為取決於 AUTO_RECOVER_ON_RESTART 環境變數：
+   *   true  → 逐一恢復 state==='active' 的專案
+   *   false → 清空所有 Redis 中的專案狀態（全新啟動）
+   */
   try {
     const autoRecover = process.env.AUTO_RECOVER_ON_RESTART;
     if (autoRecover === 'true') {
@@ -226,7 +340,6 @@ async function recoverActiveProjects(): Promise<void> {
           if (savedProject.state === 'active') {
             console.log(`🔄 恢復專案: ${savedProject.projectId} (callFlowId: ${savedProject.callFlowId})`);
 
-            // 重新建立 Project 實例（從 Redis 讀取的設定重新初始化）
             const projectInstance = await Project.initOutboundProject({
               projectId: savedProject.projectId,
               callFlowId: savedProject.callFlowId,
@@ -236,10 +349,8 @@ async function recoverActiveProjects(): Promise<void> {
               callRestriction: savedProject.callRestriction || []
             });
 
-            // 將恢復的實例加入活躍映射表
             activeProjects.set(savedProject.projectId, projectInstance);
 
-            // 清空舊的撥號名單，避免重啟後重複撥打已撥過的號碼
             console.log(`🗑️ 清空專案 ${savedProject.projectId} 的舊撥號名單...`);
             const clearResult = await CallListManager.removeProjectCallList(savedProject.projectId);
             if (clearResult) {
@@ -248,31 +359,23 @@ async function recoverActiveProjects(): Promise<void> {
               console.warn(`⚠️ 專案 ${savedProject.projectId} 清空撥號名單失敗，但不影響恢復流程`);
             }
 
-            // 注入 WebSocket 廣播引用，讓 Project 可以主動推送狀態給前端
             projectInstance.setBroadcastWebSocket(mainWebSocketServer);
             projectInstance.setOnCompleteStop(() => activeProjects.delete(savedProject.projectId));
-
-            // 重新建立與 3CX 的 WebSocket 連線，恢復通話監控
             await projectInstance.create3cxWebSocketConnection(mainWebSocketServer);
 
             console.log(`✅ 專案 ${savedProject.projectId} 恢復成功，代理數量: ${savedProject.agentQuantity}`);
           } else {
-            // 非 active 狀態（如 stopped）的專案不需要恢復
             console.log(`⏭️ 跳過非活躍專案: ${savedProject.projectId} (狀態: ${savedProject.state})`);
           }
         } catch (error) {
           console.error(`恢復專案 ${savedProject.projectId} 失敗:`, error);
-          // 單個專案失敗不中斷整體恢復流程
         }
       }
 
       console.log(`🎉 專案恢復完成，成功恢復 ${activeProjects.size} 個專案`);
-
-      // 恢復完成後，廣播最新的專案列表給所有已連線的前端
       await broadcastAllProjects(mainWebSocketServer);
 
     } else {
-      // AUTO_RECOVER_ON_RESTART 未啟用，全新啟動：清空所有舊狀態
       console.log('⏸️ 自動恢復功能未啟用，跳過專案恢復');
 
       const clearAllResult = await CallListManager.clearAllProjectCallList();
@@ -291,119 +394,20 @@ async function recoverActiveProjects(): Promise<void> {
   }
 }
 
-/**
- * 前端儀表板 WebSocket 連線處理
- *
- * 每當前端建立 WebSocket 連線時：
- * 1. 立即推送當前所有專案狀態（讓前端載入後馬上看到最新資料）
- * 2. 啟動心跳機制（每 60 秒 ping 一次，確認連線仍存活）
- * 3. 監聽前端送來的操作事件（startOutbound / stopOutbound）
- *
- * 支援的事件：
- *   ping          → 回應 pong（前端自定義心跳）
- *   startOutbound → 初始化並啟動外播專案
- *   stopOutbound  → 停止指定外播專案
- */
-if (ENABLE_OUTBOUND_CAMPAIGN) {
-  mainWebSocketServer.on('connection', async (wsClient) => {
-    console.log('🔌 WebSocket client connected');
-
-    // 新連線建立後，立即廣播當前所有專案狀態給該客戶端
-    broadcastAllProjects(mainWebSocketServer);
-
-    // ── 心跳機制 ────────────────────────────────────────────────────────────
-    // 每 60 秒發送 ping；若 60 秒內未收到 pong，視為連線中斷並強制終止
-    let isAlive = true;
-    let heartbeatInterval: NodeJS.Timeout;
-
-    const startHeartbeat = () => {
-      heartbeatInterval = setInterval(() => {
-        if (!isAlive) {
-          console.log('💔 WebSocket client ping 超時，終止連線');
-          wsClient.terminate();
-          return;
-        }
-        isAlive = false;
-        wsClient.ping();
-      }, 60000);
-    };
-
-    startHeartbeat();
-
-    wsClient.on('pong', () => {
-      // 收到 pong，重置存活旗標
-      isAlive = true;
-    });
-
-    // ── 訊息處理 ────────────────────────────────────────────────────────────
-    wsClient.on('message', async (message) => {
-      try {
-        const { event, payload } = JSON.parse(message.toString());
-
-        switch (event) {
-          // 前端發送的應用層心跳（與 WebSocket 原生 ping/pong 不同）
-          case 'ping':
-            wsClient.send(JSON.stringify({ event: 'pong', timestamp: Date.now() }));
-            break;
-
-          // 啟動外播專案：初始化 Project 實例並建立 3CX WebSocket 連線
-          case 'startOutbound':
-            console.log('Received startOutbound event with payload:', payload);
-            const projectInstance = await Project.initOutboundProject(payload.project);
-            activeProjects.set(payload.project.projectId, projectInstance);
-            projectInstance.setBroadcastWebSocket(mainWebSocketServer);
-            projectInstance.setOnCompleteStop(() => activeProjects.delete(payload.project.projectId));
-            await projectInstance.create3cxWebSocketConnection(mainWebSocketServer);
-            break;
-
-          // 停止外播專案：關閉 3CX 連線並從 activeProjects 移除
-          case 'stopOutbound':
-            console.log('停止 外撥事件:', payload.project);
-            const stopSuccess = await Project.stopOutboundProject(payload.project, activeProjects, mainWebSocketServer);
-            if (!stopSuccess) {
-              console.warn(`停止專案 ${payload.project.projectId} 失敗`);
-            }
-            break;
-
-          default:
-            console.warn('未知事件:', event);
-        }
-      } catch (error) {
-        console.error('WebSocket message handling error:', error);
-        // 將錯誤廣播給所有連線的前端
-        broadcastError(mainWebSocketServer, error);
-      }
-    });
-
-    // ── 連線關閉 / 錯誤 ─────────────────────────────────────────────────────
-    wsClient.on('close', () => {
-      console.log('👋 WebSocket client disconnected');
-      clearInterval(heartbeatInterval);
-    });
-
-    wsClient.on('error', (error) => {
-      console.error('WebSocket client error:', error);
-      clearInterval(heartbeatInterval);
-    });
-  });
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 啟動伺服器
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 啟動順序：
- * 1. 初始化各功能的資料儲存（Redis / SQLite）
- * 2. 啟動語音通知的背景服務（排程恢復 + OM 狀態監控）
+ * 1. 動態載入自動外播模組並初始化（含 Redis、WebSocket 設定、專案恢復）
+ * 2. 初始化語音通知的資料儲存與背景服務
  * 3. 印出啟動資訊
- * 4. 恢復重啟前的外播專案（若有啟用自動恢復）
  */
 httpServer.listen(PORT, async () => {
   try {
-    if (ENABLE_OUTBOUND_CAMPAIGN) { // 只有在自動外播功能啟用時才建立 Redis 連線
-      // 建立 Redis 連線，用於儲存外播專案狀態與撥號名單
-      await initRedis();
+    if (ENABLE_OUTBOUND_CAMPAIGN) {
+      await setupOutboundCampaign();
     }
 
     if (ENABLE_CALL_SCHEDULE) { // 只有在語音通知功能啟用時才初始化資料庫與啟動相關服務
@@ -418,7 +422,7 @@ httpServer.listen(PORT, async () => {
       }
       // 重新載入服務器重啟前尚未執行的排程任務
       recoverPendingSchedules();
-      // 啟動輪詢 OM API 的背景監控，追蹤通話撥出結果
+      // 啟動通話狀態監控
       // 失敗時僅 log，不中斷啟動——設備未設定時監控無法啟動，但 server 照常運行
       try {
         startCallMonitorServer();
@@ -431,16 +435,11 @@ httpServer.listen(PORT, async () => {
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`⚡️ 自動外播: ${ENABLE_OUTBOUND_CAMPAIGN ? '啟用' : '停用'}`);
     console.log(`⚡️ 語音通知: ${ENABLE_CALL_SCHEDULE ? '啟用' : '停用'}`);
-    if (ENABLE_OUTBOUND_CAMPAIGN) { // 只有在自動外播功能啟用時才顯示 WebSocket 相關資訊
+    if (ENABLE_OUTBOUND_CAMPAIGN) {
       console.log(`🔌 WebSocket server is running on port ${PORT}`);
       console.log(`🖥️ Bonsale WebHook WebSocket is available on port ${PORT}/api/bonsale/webhook-ws`);
     }
     console.log(`ℹ️ Version: v2.0.6`);
-
-    if (ENABLE_OUTBOUND_CAMPAIGN) { // 只有在自動外播功能啟用時才從 Redis 恢復外播專案
-      // 從 Redis 恢復上次服務器關閉前仍在執行的外播專案
-      await recoverActiveProjects();
-    }
 
   } catch (error) {
     console.error('啟動服務器失敗:', error);
@@ -466,9 +465,8 @@ httpServer.listen(PORT, async () => {
 async function gracefulShutdown(signal: string): Promise<void> {
   console.log(`收到 ${signal} 信號，正在關閉服務器...`);
   try {
-    if (ENABLE_OUTBOUND_CAMPAIGN) { // 只有在自動外播功能啟用時才關閉 Redis 連線
-      // 正常關閉 Redis 連線，確保所有待寫入的資料都已儲存
-      await closeRedis();
+    if (outboundCloseRedis) {
+      await outboundCloseRedis();
     }
     process.exit(0);
   } catch (error) {
@@ -498,7 +496,7 @@ process.on('unhandledRejection', (reason, promise) => {
  * 僅在 ENABLE_CALL_SCHEDULE=true 時啟動（語音通知功能的一部分）。
  * 監聽埠由 FIAS_PORT 環境變數控制，預設 4021。
  */
-if (ENABLE_CALL_SCHEDULE) { // 只有在語音通知功能啟用時才啟動 FIAS TCP 伺服器
+if (ENABLE_CALL_SCHEDULE) {
   const fiasServer = createFiasServer(async (msg, conn) => {
     console.log('--- FIAS TCP 服務器收到訊息 ---');
     console.log('訊息內容:', msg);
