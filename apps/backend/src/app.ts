@@ -404,6 +404,9 @@ async function setupCallSchedule(): Promise<void> {
     { phoneApiService },
     { default: fiasHandler },
     { createServer: createFiasServer },
+    { setFiasConn },
+    { LakeshoreCallResultHandler },
+    { registerCallResultHandler },
   ] = await Promise.all([
     import('./features/call-schedule/routes/callSchedule'),
     import('./features/call-schedule/routes/lakeshore'),
@@ -413,6 +416,9 @@ async function setupCallSchedule(): Promise<void> {
     import('./features/call-schedule/services/api/phoneApiService'),
     import('./features/call-schedule/components/fiasHandler'),
     import('./features/call-schedule/util/fias'),
+    import('./features/call-schedule/util/fiasConnectionStore'),
+    import('./features/call-schedule/components/lakeshoreCallResultHandler'),
+    import('./features/call-schedule/services/monitor/callResultNotifier'),
   ]);
 
   // ── 路由填入 placeholder ──────────────────────────────────────────────────
@@ -441,13 +447,20 @@ async function setupCallSchedule(): Promise<void> {
     console.error('❌ [CallSchedule] 通話監控啟動失敗:', error);
   }
 
+  // ── 通話結果 Handler 註冊 ─────────────────────────────────────────────────
+  // 新增飯店：實作 ICallResultHandler（參考 lakeshoreCallResultHandler.ts），在這裡 register 即可
+  registerCallResultHandler(new LakeshoreCallResultHandler());
+
   // ── FIAS TCP 伺服器 ───────────────────────────────────────────────────────
   // 監聽飯店 PMS 系統透過 TCP 傳入的 FIAS 訊息，觸發對應的語音通知撥號。
-  const fiasServer = createFiasServer(async (msg, conn) => {
-    console.log('--- FIAS TCP 服務器收到訊息 ---');
-    console.log('訊息內容:', msg);
-    fiasHandler(msg, conn);
-  });
+  const fiasServer = createFiasServer(
+    async (msg, conn) => {
+      console.log('--- FIAS TCP 服務器收到訊息 ---');
+      console.log('訊息內容:', msg);
+      fiasHandler(msg, conn);
+    },
+    () => setFiasConn(null),
+  );
 
   fiasServer.listen(FIAS_PORT, () => {
     console.log(`📡 FIAS TCP server is running on port ${FIAS_PORT}`);

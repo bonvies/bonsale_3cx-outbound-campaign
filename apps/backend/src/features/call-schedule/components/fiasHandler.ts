@@ -3,6 +3,7 @@ import { FiasConn, FiasMessage } from '@call-schedule/types/fias/fiasTypes';
 import { getDatabase } from '@call-schedule/services/database';
 import { createCallSchedule, deleteCallSchedule } from '@call-schedule/services/callScheduleService';
 import { getSiteTimezone } from '@call-schedule/util/timezone';
+import { setFiasConn } from '@call-schedule/util/fiasConnectionStore';
 
 /**
  * FIAS 協定沒有前端，PMS 送來的是飯店當地時間（TI/DT），
@@ -61,6 +62,7 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
   switch (msg.type) {
 
     case 'LS': {
+      setFiasConn(conn);
       console.log('[FIAS] 執行握手程序...');
       const now = new Date();
       const da = now.toISOString().slice(2, 10).replace(/-/g, ''); // YYMMDD

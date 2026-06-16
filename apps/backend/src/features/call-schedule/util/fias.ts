@@ -28,7 +28,7 @@ function parseFiasFields(fields: string[]): Record<string, string> {
 // handler: 使用者定義的訊息處理函式，簽名為 (msg, conn) => {}
 //   msg  = { type: 'WR', fields: { RN: '101', TI: '0730' } }
 //   conn = { send(content) }  發送回應用
-export function createServer(handler: FiasHandler): net.Server {
+export function createServer(handler: FiasHandler, onClose?: () => void): net.Server {
     return net.createServer((socket) => {
         console.log('--- PMS 系統已連線 ---');
 
@@ -102,6 +102,7 @@ export function createServer(handler: FiasHandler): net.Server {
         // hadError 為 true 表示因錯誤關閉，false 表示正常關閉
         socket.on('close', (hadError: boolean) => {
             console.log(`--- 連線已徹底關閉 (是否因為錯誤: ${hadError}) ---`);
+            onClose?.();
         });
     });
 }

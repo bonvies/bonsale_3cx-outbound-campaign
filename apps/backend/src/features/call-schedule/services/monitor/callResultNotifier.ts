@@ -1,4 +1,7 @@
 
+// Handler 在 app.ts setupCallSchedule() 中透過 registerCallResultHandler() 註冊。
+// 新增飯店通知：實作 ICallResultHandler，在 app.ts 同處 register 即可。
+
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
