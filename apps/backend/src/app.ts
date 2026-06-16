@@ -13,6 +13,7 @@ import { WebSocketServer } from 'ws';
 
 // 共用設定 API
 import configRouter from './shared/routes/config';
+import sharedBonsaleRouter from './shared/routes/bonsale';
 
 // 自動外播 (Outbound Campaign) 與 語音通知 (Call Schedule) 模組均採 dynamic import，
 // 僅對應 feature flag 為 true 時才載入，避免停用時因缺少環境變數而在模組載入階段崩潰。
@@ -80,7 +81,8 @@ const mainWebSocketServer = new WebSocketServer({ noServer: true });
 // 路由掛載（依功能開關決定是否啟用）
 // ─────────────────────────────────────────────────────────────────────────────
 
-app.use('/api/config', configRouter);  // 功能設定 API（無條件掛載，前端啟動時需要）
+app.use('/api/config', configRouter);        // 功能設定 API（無條件掛載）
+app.use('/api/bonsale', sharedBonsaleRouter); // Bonsale 共用 API（無條件掛載，不受 feature flag 影響）
 
 // 自動外播路由：先以 placeholder router 佔位，確保排在 404 handler 之前。
 // setupOutboundCampaign() 完成 dynamic import 後，才會將實際路由掛入 placeholder。
