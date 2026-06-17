@@ -1,5 +1,5 @@
 import express, { Router, Request, Response } from 'express';
-import { triggerImmediateCall } from '../services/callScheduleService';
+// import { triggerImmediateCall } from '../services/callScheduleService';
 
 const router: Router = express.Router();
 
@@ -14,20 +14,21 @@ router.post('/order', async (req: Request, res: Response) => {
     console.log('[Lakeshore] ============================');
 
     // TODO: 確認 Lakeshore 實際欄位名稱後對應到這裡
-    const { audioFile, extension, notificationContent, retryInterval, maxRetries, notes, roomNum } = req.body;
+    // const { audioFile, extension, notificationContent, retryInterval, maxRetries, notes, roomNum } = req.body;
 
-    const scheduleId = await triggerImmediateCall({
-      audioFile: audioFile ?? '',
-      extension,
-      notificationContent: notificationContent ?? '',
-      retryInterval: retryInterval ?? '5',
-      maxRetries: maxRetries ?? '3',
-      notes,
-      roomNum,
-    });
+    // const scheduleId = await triggerImmediateCall({
+    //   audioFile: audioFile ?? '',
+    //   extension,
+    //   notificationContent: notificationContent ?? '',
+    //   retryInterval: retryInterval ?? '5',
+    //   maxRetries: maxRetries ?? '3',
+    //   notes,
+    //   roomNum,
+    // });
 
-    console.log(`[Lakeshore] 立即撥打已觸發 scheduleId=${scheduleId}`);
-    res.json({ success: true, scheduleId });
+    // console.log(`[Lakeshore] 立即撥打已觸發 scheduleId=${scheduleId}`);
+    // res.json({ success: true, scheduleId });
+    res.json({ success: true });
   } catch (error) {
     console.error('[Lakeshore] POST /order error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
