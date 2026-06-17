@@ -467,8 +467,9 @@ async function setupCallSchedule(): Promise<void> {
     if (!FIAS_PMS_HOST) {
       console.error('❌ [CallSchedule] FIAS_MODE=client 但未設定 FIAS_PMS_HOST，跳過 FIAS 連線');
     } else {
+      const FIAS_HEARTBEAT = parseInt(process.env.FIAS_HEARTBEAT_INTERVAL_MS ?? '0', 10);
       connectToPms(
-        { host: FIAS_PMS_HOST, port: FIAS_PMS_PORT },
+        { host: FIAS_PMS_HOST, port: FIAS_PMS_PORT, heartbeatIntervalMs: FIAS_HEARTBEAT },
         async (msg, conn) => {
           console.log('--- FIAS TCP 客戶端收到訊息 ---');
           console.log('訊息內容:', msg);

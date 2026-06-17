@@ -10,7 +10,7 @@ export type FiasClientConfig = {
   port: number;
   reconnectDelayMs?: number;    // default 5000
   maxReconnectDelayMs?: number; // default 60000
-  heartbeatIntervalMs?: number; // default 30000，0 = 停用
+  heartbeatIntervalMs?: number; // default 0（停用），> 0 則定時送 LA
 };
 
 export type FiasClientHandler = (msg: FiasMessage, conn: FiasConn) => void | Promise<void>;
@@ -48,7 +48,7 @@ export function connectToPms(
 ): void {
   const baseDelay = config.reconnectDelayMs ?? 5000;
   const maxDelay = config.maxReconnectDelayMs ?? 60000;
-  const heartbeatInterval = config.heartbeatIntervalMs ?? 30000;
+  const heartbeatInterval = config.heartbeatIntervalMs ?? 0;
   let currentDelay = baseDelay;
 
   function connect(): void {
