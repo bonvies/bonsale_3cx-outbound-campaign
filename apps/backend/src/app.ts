@@ -406,6 +406,7 @@ async function setupCallSchedule(): Promise<void> {
     { phoneApiService },
     { default: fiasHandler },
     { createServer: createFiasServer },
+    { connectToPms },
     { setFiasConn },
     { LakeshoreCallResultHandler },
     { registerCallResultHandler },
@@ -418,6 +419,7 @@ async function setupCallSchedule(): Promise<void> {
     import('./features/call-schedule/services/api/phoneApiService'),
     import('./features/call-schedule/components/fiasHandler'),
     import('./features/call-schedule/util/fias'),
+    import('./features/call-schedule/util/fiasClient'),
     import('./features/call-schedule/util/fiasConnectionStore'),
     import('./features/call-schedule/components/lakeshoreCallResultHandler'),
     import('./features/call-schedule/services/monitor/callResultNotifier'),
@@ -453,20 +455,43 @@ async function setupCallSchedule(): Promise<void> {
   // 新增飯店：實作 ICallResultHandler（參考 lakeshoreCallResultHandler.ts），在這裡 register 即可
   registerCallResultHandler(new LakeshoreCallResultHandler());
 
-  // ── FIAS TCP 伺服器 ───────────────────────────────────────────────────────
-  // 監聽飯店 PMS 系統透過 TCP 傳入的 FIAS 訊息，觸發對應的語音通知撥號。
-  const fiasServer = createFiasServer(
-    async (msg, conn) => {
-      console.log('--- FIAS TCP 服務器收到訊息 ---');
-      console.log('訊息內容:', msg);
-      fiasHandler(msg, conn);
-    },
-    () => setFiasConn(null),
-  );
+  // ── FIAS TCP ──────────────────────────────────────────────────────────────
+  // FIAS_MODE=server（預設）：開 TCP server，等 PMS 連入
+  // FIAS_MODE=client        ：主動連至 PMS TCP server（煙波等 PMS SERVER 模式）
+  const FIAS_MODE = process.env.FIAS_MODE ?? 'server';
 
-  fiasServer.listen(FIAS_PORT, () => {
-    console.log(`📡 FIAS TCP server is running on port ${FIAS_PORT}`);
-  });
+  if (FIAS_MODE === 'client') {
+    const FIAS_PMS_HOST = process.env.FIAS_PMS_HOST;
+    const FIAS_PMS_PORT = parseInt(process.env.FIAS_PMS_PORT ?? String(FIAS_PORT), 10);
+
+    if (!FIAS_PMS_HOST) {
+      console.error('❌ [CallSchedule] FIAS_MODE=client 但未設定 FIAS_PMS_HOST，跳過 FIAS 連線');
+    } else {
+      connectToPms(
+        { host: FIAS_PMS_HOST, port: FIAS_PMS_PORT },
+        async (msg, conn) => {
+          console.log('--- FIAS TCP 客戶端收到訊息 ---');
+          console.log('訊息內容:', msg);
+          fiasHandler(msg, conn);
+        },
+        () => setFiasConn(null),
+      );
+      console.log(`📡 FIAS TCP 客戶端正在連線至 PMS ${FIAS_PMS_HOST}:${FIAS_PMS_PORT}...`);
+    }
+  } else {
+    const fiasServer = createFiasServer(
+      async (msg, conn) => {
+        console.log('--- FIAS TCP 服務器收到訊息 ---');
+        console.log('訊息內容:', msg);
+        fiasHandler(msg, conn);
+      },
+      () => setFiasConn(null),
+    );
+
+    fiasServer.listen(FIAS_PORT, () => {
+      console.log(`📡 FIAS TCP server is running on port ${FIAS_PORT}`);
+    });
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
