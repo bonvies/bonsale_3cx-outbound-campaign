@@ -5,6 +5,7 @@ import { setFiasConn } from './fiasConnectionStore';
 
 const STX = '\x02';
 const ETX = '\x03';
+const FIAS_ENCODING = process.env.FIAS_ENCODING ?? 'utf8';
 
 export type FiasClientConfig = {
   host: string;
@@ -65,7 +66,7 @@ export function connectToPms(
       conn = {
         send(content: string): void {
           console.log(`[FiasClient] 發送訊息: ${content}`);
-          const encoded = iconv.encode(content, 'cp936');
+          const encoded = iconv.encode(content, FIAS_ENCODING);
           const frame = STX + encoded.toString('binary') + ETX;
           socket.write(frame, 'binary');
         },
@@ -94,7 +95,7 @@ export function connectToPms(
         }
 
         const messageBytes = Buffer.from(binaryBuffer.substring(start + 1, end), 'binary');
-        const rawMessage = iconv.decode(messageBytes, 'cp936');
+        const rawMessage = iconv.decode(messageBytes, FIAS_ENCODING);
         console.log(`[FiasClient] 收到原始訊息: ${rawMessage}`);
         binaryBuffer = binaryBuffer.substring(end + 1);
 
