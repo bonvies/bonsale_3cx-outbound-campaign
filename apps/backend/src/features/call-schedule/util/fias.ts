@@ -1,4 +1,5 @@
 import net from 'net';
+import iconv from 'iconv-lite';
 import { FiasConn, FiasMessage } from '../types/fias/fiasTypes';
 // FIAS 協定使用這兩個特殊 byte 包住每則訊息，作為「信封」
 // STX (Start of Text) = byte 0x02，標記訊息開頭
@@ -6,6 +7,7 @@ import { FiasConn, FiasMessage } from '../types/fias/fiasTypes';
 // 完整訊息格式：\x02TYPE|FIELD1VALUE1|FIELD2VALUE2\x03
 const STX = '\x02';
 const ETX = '\x03';
+const FIAS_ENCODING = process.env.FIAS_ENCODING ?? 'utf8';
 
 export type FiasHandler = (msg: FiasMessage, conn: FiasConn) => void;
 
@@ -32,48 +34,45 @@ export function createServer(handler: FiasHandler, onClose?: () => void): net.Se
     return net.createServer((socket) => {
         console.log('--- PMS 系統已連線 ---');
 
-        // 設定 ASCII 編碼，讓 data 事件直接給字串，不需要手動呼叫 toString()
-        socket.setEncoding('ascii');
         console.log(`[連線成功] 來自: ${socket.remoteAddress}:${socket.remotePort}`);
 
         // TCP 是串流協定，不保證一次 data 事件就能收到完整訊息
-        // 用 buffer 把每次收到的片段累積起來，等出現完整的 STX...ETX 再處理
-        let buffer = '';
+        // 用 binaryBuffer 把每次收到的片段累積起來，等出現完整的 STX...ETX 再處理
+        let binaryBuffer = '';
 
         // conn 物件：封裝發送邏輯，讓使用者只需 conn.send('LA')
         // 實際送出的內容會自動加上 STX 和 ETX：\x02LA\x03
         const conn: FiasConn = {
             send(content: string): void {
                 console.log(`[發送訊息]: ${content}`);
-                socket.write(STX + content + ETX);
+                const encoded = iconv.encode(content, FIAS_ENCODING);
+                const frame = STX + encoded.toString('binary') + ETX;
+                socket.write(frame, 'binary');
             }
         };
 
-        socket.on('data', (data: string) => {
-            console.log(`[收到原始 Buffer]:`, data);
-
-            // 將新收到的資料追加到 buffer
-            buffer += data;
+        socket.on('data', (data: Buffer) => {
+            binaryBuffer += data.toString('binary');
 
             // 用 while 而非 if：同一次 data 可能包含多則訊息（例如 LA 和 WR 同時到）
-            // 只要 buffer 裡還有完整的 STX...ETX，就繼續解析
-            while (buffer.includes(STX) && buffer.includes(ETX)) {
-                const start = buffer.indexOf(STX);
-                const end = buffer.indexOf(ETX);
+            // 只要 binaryBuffer 裡還有完整的 STX...ETX，就繼續解析
+            while (binaryBuffer.includes(STX) && binaryBuffer.includes(ETX)) {
+                const start = binaryBuffer.indexOf(STX);
+                const end = binaryBuffer.indexOf(ETX);
 
                 // 防禦性處理：若 ETX 出現在 STX 之前，代表資料損毀或殘留垃圾
                 // 把這個孤立的 ETX 丟掉，重新找下一組有效訊框
                 if (start > end) {
-                    buffer = buffer.substring(end + 1);
+                    binaryBuffer = binaryBuffer.substring(end + 1);
                     continue;
                 }
 
-                // 擷取 STX 和 ETX 中間的內容，例如 'WR|RN101|TI0730'
-                const rawMessage = buffer.substring(start + 1, end);
+                const messageBytes = Buffer.from(binaryBuffer.substring(start + 1, end), 'binary');
+                const rawMessage = iconv.decode(messageBytes, FIAS_ENCODING);
                 console.log(`[收到原始訊息]: ${rawMessage}`);
 
-                // 把已處理的部分從 buffer 移除，保留 ETX 之後的剩餘資料
-                buffer = buffer.substring(end + 1);
+                // 把已處理的部分從 binaryBuffer 移除，保留 ETX 之後的剩餘資料
+                binaryBuffer = binaryBuffer.substring(end + 1);
 
                 // 以 '|' 切割，第一段是訊息類型，其餘是欄位
                 // 例如：['WR', 'RN101', 'TI0730']
