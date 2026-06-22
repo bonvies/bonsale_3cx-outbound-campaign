@@ -1,4 +1,5 @@
 import net from 'net';
+import iconv from 'iconv-lite';
 import { FiasConn, FiasMessage } from '../types/fias/fiasTypes';
 import { setFiasConn } from './fiasConnectionStore';
 
@@ -53,9 +54,7 @@ export function connectToPms(
 
   function connect(): void {
     const socket = net.connect(config.port, config.host);
-    socket.setEncoding('ascii');
-
-    let buffer = '';
+    let binaryBuffer = '';
     let heartbeatTimer: NodeJS.Timeout | null = null;
     let conn: FiasConn | null = null;
 
@@ -66,7 +65,9 @@ export function connectToPms(
       conn = {
         send(content: string): void {
           console.log(`[FiasClient] 發送訊息: ${content}`);
-          socket.write(STX + content + ETX);
+          const encoded = iconv.encode(content, 'cp936');
+          const frame = STX + encoded.toString('binary') + ETX;
+          socket.write(frame, 'binary');
         },
       };
 
@@ -80,22 +81,22 @@ export function connectToPms(
       }
     });
 
-    socket.on('data', (data: string) => {
-      console.log(`[FiasClient] 收到原始 Buffer:`, data);
-      buffer += data;
+    socket.on('data', (data: Buffer) => {
+      binaryBuffer += data.toString('binary');
 
-      while (buffer.includes(STX) && buffer.includes(ETX)) {
-        const start = buffer.indexOf(STX);
-        const end = buffer.indexOf(ETX);
+      while (binaryBuffer.includes(STX) && binaryBuffer.includes(ETX)) {
+        const start = binaryBuffer.indexOf(STX);
+        const end = binaryBuffer.indexOf(ETX);
 
         if (start > end) {
-          buffer = buffer.substring(end + 1);
+          binaryBuffer = binaryBuffer.substring(end + 1);
           continue;
         }
 
-        const rawMessage = buffer.substring(start + 1, end);
+        const messageBytes = Buffer.from(binaryBuffer.substring(start + 1, end), 'binary');
+        const rawMessage = iconv.decode(messageBytes, 'cp936');
         console.log(`[FiasClient] 收到原始訊息: ${rawMessage}`);
-        buffer = buffer.substring(end + 1);
+        binaryBuffer = binaryBuffer.substring(end + 1);
 
         const fields = rawMessage.split('|');
         const msg: FiasMessage = {
