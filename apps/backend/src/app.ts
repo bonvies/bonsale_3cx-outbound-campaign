@@ -31,8 +31,10 @@ dotenv.config();
  * 在 .env 中明確填寫 'true' 或 'false'：
  *   ENABLE_OUTBOUND_CAMPAIGN=true   → 啟用自動外播（連 Redis、建 WebSocket）
  *   ENABLE_OUTBOUND_CAMPAIGN=false  → 停用自動外播
- *   ENABLE_CALL_SCHEDULE=true       → 啟用語音通知（建 SQLite、啟動 FIAS TCP）
+ *   ENABLE_CALL_SCHEDULE=true       → 啟用語音通知（建 SQLite）
  *   ENABLE_CALL_SCHEDULE=false      → 停用語音通知
+ *   ENABLE_FIAS=true                → 啟用 FIAS TCP 伺服器／客戶端（預設 true）
+ *   ENABLE_FIAS=false               → 停用 FIAS（不佔用 TCP port，適合 Cloud Run）
  */
 if (process.env.ENABLE_OUTBOUND_CAMPAIGN === undefined) {
   console.error('[FATAL] 環境變數 ENABLE_OUTBOUND_CAMPAIGN 未設定，請在 .env 填入 true 或 false');
@@ -44,6 +46,7 @@ if (process.env.ENABLE_CALL_SCHEDULE === undefined) {
 }
 const ENABLE_OUTBOUND_CAMPAIGN = process.env.ENABLE_OUTBOUND_CAMPAIGN === 'true';
 const ENABLE_CALL_SCHEDULE = process.env.ENABLE_CALL_SCHEDULE === 'true';
+const ENABLE_FIAS = process.env.ENABLE_FIAS !== 'false'; // 預設 true，設 false 可停用
 
 const PORT = process.env.HTTP_PORT || 4020; // HTTP / WebSocket 主服務埠
 const FIAS_PORT = process.env.FIAS_PORT || 4021; // FIAS TCP 伺服器埠
@@ -456,42 +459,47 @@ async function setupCallSchedule(): Promise<void> {
   registerCallResultHandler(new LakeshoreCallResultHandler());
 
   // ── FIAS TCP ──────────────────────────────────────────────────────────────
+  // ENABLE_FIAS=false → 跳過，不佔用 TCP port（適合 Cloud Run 等單 port 環境）
   // FIAS_MODE=server（預設）：開 TCP server，等 PMS 連入
   // FIAS_MODE=client        ：主動連至 PMS TCP server（煙波等 PMS SERVER 模式）
-  const FIAS_MODE = process.env.FIAS_MODE ?? 'server';
+  if (!ENABLE_FIAS) {
+    console.log('📡 FIAS 已停用（ENABLE_FIAS=false），跳過 TCP 初始化');
+  } else {
+    const FIAS_MODE = process.env.FIAS_MODE ?? 'server';
 
-  if (FIAS_MODE === 'client') {
-    const FIAS_PMS_HOST = process.env.FIAS_PMS_HOST;
-    const FIAS_PMS_PORT = parseInt(process.env.FIAS_PMS_PORT ?? String(FIAS_PORT), 10);
+    if (FIAS_MODE === 'client') {
+      const FIAS_PMS_HOST = process.env.FIAS_PMS_HOST;
+      const FIAS_PMS_PORT = parseInt(process.env.FIAS_PMS_PORT ?? String(FIAS_PORT), 10);
 
-    if (!FIAS_PMS_HOST) {
-      console.error('❌ [CallSchedule] FIAS_MODE=client 但未設定 FIAS_PMS_HOST，跳過 FIAS 連線');
+      if (!FIAS_PMS_HOST) {
+        console.error('❌ [CallSchedule] FIAS_MODE=client 但未設定 FIAS_PMS_HOST，跳過 FIAS 連線');
+      } else {
+        const FIAS_HEARTBEAT = parseInt(process.env.FIAS_HEARTBEAT_INTERVAL_MS ?? '0', 10);
+        connectToPms(
+          { host: FIAS_PMS_HOST, port: FIAS_PMS_PORT, heartbeatIntervalMs: FIAS_HEARTBEAT },
+          async (msg, conn) => {
+            console.log('--- FIAS TCP 客戶端收到訊息 ---');
+            console.log('訊息內容:', msg);
+            fiasHandler(msg, conn);
+          },
+          () => setFiasConn(null),
+        );
+        console.log(`📡 FIAS TCP 客戶端正在連線至 PMS ${FIAS_PMS_HOST}:${FIAS_PMS_PORT}...`);
+      }
     } else {
-      const FIAS_HEARTBEAT = parseInt(process.env.FIAS_HEARTBEAT_INTERVAL_MS ?? '0', 10);
-      connectToPms(
-        { host: FIAS_PMS_HOST, port: FIAS_PMS_PORT, heartbeatIntervalMs: FIAS_HEARTBEAT },
+      const fiasServer = createFiasServer(
         async (msg, conn) => {
-          console.log('--- FIAS TCP 客戶端收到訊息 ---');
+          console.log('--- FIAS TCP 服務器收到訊息 ---');
           console.log('訊息內容:', msg);
           fiasHandler(msg, conn);
         },
         () => setFiasConn(null),
       );
-      console.log(`📡 FIAS TCP 客戶端正在連線至 PMS ${FIAS_PMS_HOST}:${FIAS_PMS_PORT}...`);
-    }
-  } else {
-    const fiasServer = createFiasServer(
-      async (msg, conn) => {
-        console.log('--- FIAS TCP 服務器收到訊息 ---');
-        console.log('訊息內容:', msg);
-        fiasHandler(msg, conn);
-      },
-      () => setFiasConn(null),
-    );
 
-    fiasServer.listen(FIAS_PORT, () => {
-      console.log(`📡 FIAS TCP server is running on port ${FIAS_PORT}`);
-    });
+      fiasServer.listen(FIAS_PORT, () => {
+        console.log(`📡 FIAS TCP server is running on port ${FIAS_PORT}`);
+      });
+    }
   }
 }
 
