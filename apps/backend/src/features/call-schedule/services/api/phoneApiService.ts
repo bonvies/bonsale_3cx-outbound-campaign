@@ -1,5 +1,6 @@
 import { newRockDevice } from './device/newRockApi';
 import { yeastarDevice } from './device/yeastarApi';
+import { freeSwitchDevice } from './device/freeSwitchApi';
 
 // ─────────────────────────────────────────────
 // Interface
@@ -25,15 +26,16 @@ export interface IPhoneApiService {
 // Implementations
 // ─────────────────────────────────────────────
 
-const devices: Record<'NewRock' | 'Yeastar', IPhoneApiService> = {
+const devices: Record<'NewRock' | 'Yeastar' | 'FreeSwitch', IPhoneApiService> = {
   NewRock: newRockDevice,
   Yeastar: yeastarDevice,
+  FreeSwitch: freeSwitchDevice,
 };
 
 function getDevice(): IPhoneApiService {
   const raw = process.env.TELEPHONE_EQUIPMENT;
-  if (!raw) throw new Error('[phoneApiService] 環境變數 TELEPHONE_EQUIPMENT 未設定（NewRock / Yeastar）');
-  if (raw !== 'NewRock' && raw !== 'Yeastar') throw new Error(`[phoneApiService] TELEPHONE_EQUIPMENT 值無效：「${raw}」，只接受 NewRock 或 Yeastar`);
+  if (!raw) throw new Error('[phoneApiService] 環境變數 TELEPHONE_EQUIPMENT 未設定（NewRock / Yeastar / FreeSwitch）');
+  if (raw !== 'NewRock' && raw !== 'Yeastar' && raw !== 'FreeSwitch') throw new Error(`[phoneApiService] TELEPHONE_EQUIPMENT 值無效：「${raw}」，只接受 NewRock、Yeastar 或 FreeSwitch`);
   return devices[raw];
 }
 

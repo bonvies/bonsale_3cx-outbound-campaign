@@ -114,7 +114,7 @@ export const yeastarCallMonitor: ICallMonitorService = {
   registerCall,
   cancelScheduleJobs,
 
-  start() {
+  start(_router?) {
     console.log('[YeastarMonitor] 🚀 啟動 Yeastar CDR 事件監聽');
     connect();
   },

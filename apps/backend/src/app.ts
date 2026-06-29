@@ -446,7 +446,7 @@ async function setupCallSchedule(): Promise<void> {
   // ── 通話狀態監控 ──────────────────────────────────────────────────────────
   // 失敗時僅 log，不中斷啟動——設備未設定時監控無法啟動，但 server 照常運行
   try {
-    startCallMonitorServer();
+    startCallMonitorServer(callScheduleRouter_!);
   } catch (error) {
     console.error('❌ [CallSchedule] 通話監控啟動失敗:', error);
   }

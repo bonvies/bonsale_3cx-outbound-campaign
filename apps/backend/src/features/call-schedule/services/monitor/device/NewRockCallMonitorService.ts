@@ -66,9 +66,9 @@ export const newRockCallMonitor: ICallMonitorService = {
   registerCall,
   cancelScheduleJobs,
 
-  start() {
+  start(_router?) {
     console.log('[NewRockMonitor] 🚀 啟動 NewRock 事件監聽');
-    connect()
+    connect();
   },
 };
 
