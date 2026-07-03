@@ -150,15 +150,38 @@ export class ProjectManager {
     }
   }
 
+  // 只在專案 key 存在時才寫入欄位（Lua 保證原子性）。
+  // Redis 的 hSet 對不存在的 key 會重新建立它：專案停止移除後，
+  // 若還有在途的非同步更新寫入，會把已刪除的 key 復活，造成暫存清不乾淨。
+  // 回傳 true 表示已寫入，false 表示 key 不存在（專案已移除），未寫入。
+  private static async hSetIfExists(projectKey: string, data: Record<string, string>): Promise<boolean> {
+    const luaScript = `
+      if redis.call('EXISTS', KEYS[1]) == 1 then
+        redis.call('HSET', KEYS[1], unpack(ARGV))
+        return 1
+      end
+      return 0
+    `;
+    const result = await redisClient.eval(luaScript, {
+      keys: [projectKey],
+      arguments: Object.entries(data).flat(),
+    });
+    return result === 1;
+  }
+
   // 更新專案狀態
   static async updateProjectAction(projectId: string, state: 'active' | 'stop'): Promise<void> {
     try {
       const projectKey = `${this.PROJECT_PREFIX}${projectId}`;
-      await redisClient.hSet(projectKey, {
+      const updated = await this.hSetIfExists(projectKey, {
         state: state,
         updatedAt: new Date().toISOString()
       });
-      
+      if (!updated) {
+        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過狀態更新`);
+        return;
+      }
+
       logWithTimestamp(`專案 ${projectId} 狀態更新為: ${state}`);
     } catch (error) {
       errorWithTimestamp('更新專案狀態失敗:', error);
@@ -170,11 +193,15 @@ export class ProjectManager {
   static async updateProjectAccessToken(projectId: string, accessToken: string): Promise<void> {
     try {
       const projectKey = `${this.PROJECT_PREFIX}${projectId}`;
-      await redisClient.hSet(projectKey, {
+      const updated = await this.hSetIfExists(projectKey, {
         access_token: accessToken,
         updatedAt: new Date().toISOString()
       });
-      
+      if (!updated) {
+        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過 Access Token 更新`);
+        return;
+      }
+
       logWithTimestamp(`專案 ${projectId} Access Token 已更新`);
     } catch (error) {
       errorWithTimestamp('更新專案 Access Token 失敗:', error);
@@ -195,12 +222,16 @@ export class ProjectManager {
   }>): Promise<void> {
     try {
       const projectKey = `${this.PROJECT_PREFIX}${projectId}`;
-      await redisClient.hSet(projectKey, {
+      const updated = await this.hSetIfExists(projectKey, {
         caller: JSON.stringify(callerInfo),
         agentQuantity: callerInfo.length.toString(),
         updatedAt: new Date().toISOString()
       });
-      
+      if (!updated) {
+        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過 Caller 資訊更新`);
+        return;
+      }
+
       logWithTimestamp(`專案 ${projectId} Caller 資訊已更新`);
     } catch (error) {
       errorWithTimestamp('更新專案 Caller 資訊失敗:', error);
@@ -212,11 +243,15 @@ export class ProjectManager {
   static async updateProjectLatestCallRecord(projectId: string, latestCallRecord: CurrentCallRecord): Promise<void> {
     try {
       const projectKey = `${this.PROJECT_PREFIX}${projectId}`;
-      await redisClient.hSet(projectKey, {
+      const updated = await this.hSetIfExists(projectKey, {
         latestCallRecord: JSON.stringify(latestCallRecord),
         updatedAt: new Date().toISOString()
       });
-      
+      if (!updated) {
+        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過撥打記錄更新`);
+        return;
+      }
+
       logWithTimestamp(`專案 ${projectId} 當前撥打記錄已更新`);
     } catch (error) {
       errorWithTimestamp('更新專案當前撥打記錄失敗:', error);
@@ -228,11 +263,15 @@ export class ProjectManager {
   static async updateProjectError(projectId: string, errorMessage: string | null): Promise<void> {
     try {
       const projectKey = `${this.PROJECT_PREFIX}${projectId}`;
-      await redisClient.hSet(projectKey, {
+      const updated = await this.hSetIfExists(projectKey, {
         error: errorMessage || '',
         updatedAt: new Date().toISOString()
       });
-      
+      if (!updated) {
+        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過錯誤狀態更新`);
+        return;
+      }
+
       if (errorMessage) {
         logWithTimestamp(`專案 ${projectId} 錯誤狀態已更新: ${errorMessage}`);
       } else {
@@ -248,11 +287,15 @@ export class ProjectManager {
   static async updateProjectInfo(projectId: string, infoMessage: string | null): Promise<void> {
     try {
       const projectKey = `${this.PROJECT_PREFIX}${projectId}`;
-      await redisClient.hSet(projectKey, {
+      const updated = await this.hSetIfExists(projectKey, {
         info: infoMessage || '',
         updatedAt: new Date().toISOString()
       });
-      
+      if (!updated) {
+        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過資訊狀態更新`);
+        return;
+      }
+
       if (infoMessage) {
         logWithTimestamp(`專案 ${projectId} 資訊狀態已更新: ${infoMessage}`);
       } else {
@@ -268,11 +311,15 @@ export class ProjectManager {
   static async updateProjectWarning(projectId: string, warningMessage: string | null): Promise<void> {
     try {
       const projectKey = `${this.PROJECT_PREFIX}${projectId}`;
-      await redisClient.hSet(projectKey, {
+      const updated = await this.hSetIfExists(projectKey, {
         warning: warningMessage || '',
         updatedAt: new Date().toISOString()
       });
-      
+      if (!updated) {
+        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過警告狀態更新`);
+        return;
+      }
+
       if (warningMessage) {
         logWithTimestamp(`專案 ${projectId} 警告狀態已更新: ${warningMessage}`);
       } else {

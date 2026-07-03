@@ -152,6 +152,12 @@ export default class Project {
   // 🆕 Token 刷新 Flag - 防止重複刷新 WebSocket 連接
   private isRefreshingToken: boolean = false;
 
+  // 🆕 完全停止 Flag - 專案已從 Redis 移除後，禁止任何回寫（避免 hSet 重建已刪除的 key）
+  private isRemoved: boolean = false;
+
+  // 🆕 完全停止排程 Flag - 防止 handleStopStateLogic 重複排程 executeCompleteStop
+  private isCompleteStopScheduled: boolean = false;
+
   /**
    * Project 類別構造函數
    * @param client_id 3CX 客戶端 ID
@@ -673,6 +679,12 @@ export default class Project {
       this.callerExtensionLastExecutionTime[dn] = new Date().toISOString();
       logWithTimestamp(`📝 紀錄分機 ${dn} 最後執行時間: ${this.callerExtensionLastExecutionTime[dn]}`);
 
+      // 專案已移除時禁止 saveProject：它會整包 hSet 重建 key，並把 projectId sAdd 回 active_projects
+      if (this.isRemoved) {
+        logWithTimestamp(`專案 ${this.projectId} 已完全停止並移除，跳過保存分機執行時間`);
+        return;
+      }
+
       // 同時保存到 Redis
       try {
         await ProjectManager.saveProject(this);
@@ -710,9 +722,15 @@ export default class Project {
           isExecuteOutboundCalls,
           isInitCall
         });
+        // 專案已從 Redis 移除，任何後續處理都會把已刪除的 key 寫回，直接跳過
+        if (this.isRemoved) {
+          logWithTimestamp('專案已完全停止並移除，跳過外撥流程');
+          return;
+        }
+
         // 清除之前的資訊提示（如果有的話）
         await this.clearErrorWarningInfo();
-        
+
         // 步驟一: 檢查專案狀態
         if (this.state !== 'active') {
           logWithTimestamp('專案狀態不符合外撥條件:', this.state);
@@ -2100,19 +2118,37 @@ export default class Project {
    */
   private async handleStopStateLogic(broadcastWs: WebSocketServer): Promise<void> {
     try {
+      // 專案已完全停止並移除，不再處理任何後續事件（避免 updateCallerInfo 把資料寫回 Redis）
+      if (this.isRemoved) {
+        return;
+      }
+
       // 更新 caller 資訊以獲取最新狀態
       await this.updateCallerInfo();
-      
+
+      // 同步撥打記錄狀態：停止等待期間客戶接聽時，把 status 從 Dialing 更新為 Connected，
+      // 否則 executeCompleteStop 的 processPendingCallRecords 會把已接通的電話記錄成未接通
+      await this.updateLatestCallRecordStatus();
+
       // 廣播專案資訊（讓前端知道當前通話狀態）
       await this.broadcastProjectInfo(broadcastWs);
-      
+
       // 檢查是否還有活躍通話
       if (!this.hasActiveCalls()) {
+        // 防止多個 WebSocket 事件重複排程完全停止
+        if (this.isCompleteStopScheduled) {
+          logWithTimestamp(`專案 ${this.projectId} 已排程完全停止，跳過重複排程`);
+          return;
+        }
+        this.isCompleteStopScheduled = true;
+
         logWithTimestamp(`專案 ${this.projectId} 已無活躍通話，執行完全停止`);
 
         // 故意延遲一秒 讓前端不要唐突消失撥打狀態
         setTimeout(async () => {
           await this.executeCompleteStop(broadcastWs);
+          // 若停止未成功（isRemoved 仍為 false），允許下一個事件重新排程
+          this.isCompleteStopScheduled = this.isRemoved;
         }, 1000);
 
       } else {
@@ -2200,38 +2236,51 @@ export default class Project {
    * @param broadcastWs 廣播 WebSocket 伺服器實例
    */
   async executeCompleteStop(broadcastWs: WebSocketServer): Promise<void> {
-    try {
-      // 停止空閒檢查定時器
-      this.stopIdleCheck();
-      
-      // 處理所有未完成的通話記錄
-      await this.processPendingCallRecords();
-      
-      // 清空該專案在 Redis 中的暫存撥號名單
-      logWithTimestamp(`🗑️ 清空專案 ${this.projectId} 的 Redis 暫存撥號名單`);
-      const clearResult = await CallListManager.removeProjectCallList(this.projectId);
-      if (clearResult) {
-        logWithTimestamp(`✅ 成功清空專案 ${this.projectId} 的撥號名單`);
-      } else {
-        warnWithTimestamp(`⚠️ 清空專案 ${this.projectId} 撥號名單失敗`);
+    // 🔒 與 outboundCall 共用同一把 Mutex：確保刪除 Redis 資料時，
+    // 沒有已通過狀態檢查、還在途中的撥號流程會在刪除後把資料寫回（復活寫入）
+    await this.processCallerMutex.runExclusive(async () => {
+      // 已經完全停止過，跳過重複執行（handleStopStateLogic 可能排程多次）
+      if (this.isRemoved) {
+        logWithTimestamp(`專案 ${this.projectId} 已完全停止並移除，跳過重複執行`);
+        return;
       }
-      
-      // 斷開 WebSocket 連接
-      await this.disconnect3cxWebSocket();
-      
-      // 從 Redis 移除專案
-      await ProjectManager.removeProject(this.projectId);
-      
-      // 最後廣播一次更新
-      await this.broadcastProjectInfo(broadcastWs);
-      
-      logWithTimestamp(`專案 ${this.projectId} 已完全停止並移除`);
 
-      // 通知外部（例如 activeProjects Map）移除此實例
-      this.onCompleteStop?.();
-    } catch (error) {
-      errorWithTimestamp(`執行完全停止時發生錯誤:`, error);
-    }
+      try {
+        // 停止空閒檢查定時器
+        this.stopIdleCheck();
+
+        // 處理所有未完成的通話記錄
+        await this.processPendingCallRecords();
+
+        // 清空該專案在 Redis 中的暫存撥號名單
+        logWithTimestamp(`🗑️ 清空專案 ${this.projectId} 的 Redis 暫存撥號名單`);
+        const clearResult = await CallListManager.removeProjectCallList(this.projectId);
+        if (clearResult) {
+          logWithTimestamp(`✅ 成功清空專案 ${this.projectId} 的撥號名單`);
+        } else {
+          warnWithTimestamp(`⚠️ 清空專案 ${this.projectId} 撥號名單失敗`);
+        }
+
+        // 斷開 WebSocket 連接
+        await this.disconnect3cxWebSocket();
+
+        // 從 Redis 移除專案
+        await ProjectManager.removeProject(this.projectId);
+
+        // 標記為已移除：此後所有回寫 Redis 的路徑（outboundCall、handleStopStateLogic 等）都會被擋下
+        this.isRemoved = true;
+
+        // 最後廣播一次更新
+        await this.broadcastProjectInfo(broadcastWs);
+
+        logWithTimestamp(`專案 ${this.projectId} 已完全停止並移除`);
+
+        // 通知外部（例如 activeProjects Map）移除此實例
+        this.onCompleteStop?.();
+      } catch (error) {
+        errorWithTimestamp(`執行完全停止時發生錯誤:`, error);
+      }
+    });
   }
 
   /**
