@@ -609,6 +609,15 @@ export default class Project {
             logWithTimestamp(`⚠️ 捕獲 participant 快照失敗:`, captureError);
           }
 
+          // 停止等待期間的 participant 更新事件（例如接聽 Dialing -> Connected）也要走停止邏輯，
+          // 否則會被 outboundCall 的狀態檢查早退丟棄，接聽狀態永遠寫不進 latestCallRecord，
+          // 最後 processPendingCallRecords 會把已接通的電話記錄成未接通
+          if (this.state === 'stop') {
+            logWithTimestamp(`專案狀態為 stop，執行停止狀態邏輯處理`);
+            await this.handleStopStateLogic(broadcastWs);
+            return;
+          }
+
           if (this.throttledOutboundCall) {
             // 使用 throttled 版本的 outboundCall，並傳入快照
             // 注意：不 await，讓它在背景執行，避免在 WebSocket 事件處理器內造成死鎖
