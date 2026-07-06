@@ -45,8 +45,20 @@ const RETCODE_MSG: Record<string, string> = {
   '999': '未知錯誤',
 };
 
-function respond(res: Response, retcode: string): void {
-  res.json({ retcode, msg: RETCODE_MSG[retcode] });
+// retcode 對應的 HTTP status code，非成功不應該回 200
+const RETCODE_HTTP_STATUS: Record<string, number> = {
+  '000': 200,
+  '001': 502, // Protel/PMS 端失敗
+  '002': 400,
+  '003': 403,
+  '004': 400,
+  '005': 400,
+  '006': 400,
+  '999': 500,
+};
+
+function respond(res: Response, retcode: string, data?: unknown): void {
+  res.status(RETCODE_HTTP_STATUS[retcode] ?? 500).json({ retcode, msg: RETCODE_MSG[retcode], data });
 }
 
 // 檢核白名單
@@ -64,7 +76,7 @@ function rejectIfNotWhitelisted(req: Request, res: Response): boolean {
   const clientIp = req.ip ?? req.socket.remoteAddress ?? '';
   if (isWhitelisted(clientIp)) return false;
   console.warn(`[Lakeshore] 拒絕非白名單 IP: ${clientIp}`);
-  respond(res, '003');
+  respond(res, '003', { message: `client IP ${clientIp} not in whitelist` });
   return true;
 }
 
@@ -93,12 +105,12 @@ router.post('/room/status', async (req: Request, res: Response) => {
     const roomstatus = req.body.roomstatus ?? req.body.status;
 
     if (!roomno || roomstatus === undefined || roomstatus === null || roomstatus === '' || !statustime) {
-      respond(res, '004');
+      respond(res, '004', { message: 'roomno, roomstatus and statustime are required' });
       return;
     }
 
     if (!VALID_ROOM_STATUSES.includes(String(roomstatus))) {
-      respond(res, '002');
+      respond(res, '002', { message: `invalid roomstatus: ${roomstatus}` });
       return;
     }
 
@@ -107,7 +119,7 @@ router.post('/room/status', async (req: Request, res: Response) => {
     const timezone = await getSiteTimezone();
     const statusDate = parseStatusTime(statustime, timezone);
     if (!statusDate || statusDate.getTime() < Date.now() - STATUSTIME_MAX_AGE_MS) {
-      respond(res, '006');
+      respond(res, '006', { message: `invalid or stale statustime: ${statustime}` });
       return;
     }
 
@@ -125,10 +137,10 @@ router.post('/room/status', async (req: Request, res: Response) => {
       console.warn(`[Lakeshore] FIAS 未連線，房況無法轉發給 Protel（房間=${roomno} 狀態=${roomstatus}）`);
     }
 
-    respond(res, '000');
+    respond(res, '000', { roomno, roomstatus });
   } catch (error) {
     console.error('[Lakeshore] POST /room/status error:', error);
-    respond(res, '999');
+    respond(res, '999', { error });
   }
 });
 
@@ -142,34 +154,34 @@ router.post('/checkin', async (req: Request, res: Response) => {
 
     if (rejectIfNotWhitelisted(req, res)) return;
 
-    const { roomno, guestname, tollallow } = req.body;
-    if (!roomno || !guestname) {
-      respond(res, '004');
+    const { room_number, guest_name, toll_allow } = req.body;
+    if (!room_number || !guest_name) {
+      respond(res, '004', { message: 'room_number and guest_name are required' });
       return;
     }
 
     // 通話權限由煙波依房型/規則自行指定，未帶值則用預設（CS2：市內＋國內＋行動，不含國際）
     let resolvedTollAllow: TollAllow = DEFAULT_TOLL_ALLOW;
-    if (tollallow !== undefined && tollallow !== null && tollallow !== '') {
-      if (!VALID_TOLL_ALLOWS.includes(String(tollallow) as TollAllow)) {
-        respond(res, '004');
+    if (toll_allow !== undefined && toll_allow !== null && toll_allow !== '') {
+      if (!VALID_TOLL_ALLOWS.includes(String(toll_allow) as TollAllow)) {
+        respond(res, '004', { message: `invalid toll_allow: ${toll_allow}` });
         return;
       }
-      resolvedTollAllow = String(tollallow) as TollAllow;
+      resolvedTollAllow = String(toll_allow) as TollAllow;
     }
 
-    const result = await checkin(String(roomno), String(guestname), resolvedTollAllow);
+    const result = await checkin(String(room_number), String(guest_name), resolvedTollAllow);
     if (!result.success) {
-      console.error(`[Lakeshore] checkin 失敗（房間=${roomno}）:`, result.error);
-      respond(res, '999');
+      console.error(`[Lakeshore] checkin 失敗（房間=${room_number}）:`, result.error);
+      respond(res, '999', { error: result.error });
       return;
     }
 
-    console.log(`[Lakeshore] check-in 完成：房間=${roomno} 房客=${guestname} 權限=${resolvedTollAllow}`);
-    respond(res, '000');
+    console.log(`[Lakeshore] check-in 完成：房間=${room_number} 房客=${guest_name} 權限=${resolvedTollAllow}`);
+    respond(res, '000', { data: result.data });
   } catch (error) {
     console.error('[Lakeshore] POST /checkin error:', error);
-    respond(res, '999');
+    respond(res, '999', { error });
   }
 });
 
@@ -182,20 +194,20 @@ router.post('/checkout', async (req: Request, res: Response) => {
 
     if (rejectIfNotWhitelisted(req, res)) return;
 
-    const { roomno } = req.body;
-    if (!roomno) {
+    const { room_number } = req.body;
+    if (!room_number) {
       respond(res, '004');
       return;
     }
 
-    const result = await checkout(String(roomno));
+    const result = await checkout(String(room_number));
     if (!result.success) {
-      console.error(`[Lakeshore] checkout 失敗（房間=${roomno}）:`, result.error);
+      console.error(`[Lakeshore] checkout 失敗（房間=${room_number}）:`, result.error);
       respond(res, '999');
       return;
     }
 
-    console.log(`[Lakeshore] check-out 完成：房間=${roomno}`);
+    console.log(`[Lakeshore] check-out 完成：房間=${room_number}`);
     respond(res, '000');
   } catch (error) {
     console.error('[Lakeshore] POST /checkout error:', error);
