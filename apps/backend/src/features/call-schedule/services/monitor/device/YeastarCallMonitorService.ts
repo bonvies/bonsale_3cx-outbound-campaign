@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 import { ICallMonitorService } from '../../callMonitorService';
 import { registerCall, cancelScheduleJobs, handleAnswer, handleBye } from '../callMonitorCore';
-import { getYeastarAccessToken, getYeastarApiHost } from '../../api/device/yeastarApi';
+import { getYeastarAccessToken, getYeastarApiHost } from '../../api/device/yeastar';
 
 const HEARTBEAT_INTERVAL_MS = 25 * 1000;
 const CDR_TYPE = 30012; // 通話結束 CDR 事件

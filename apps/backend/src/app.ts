@@ -415,7 +415,7 @@ async function setupCallSchedule(): Promise<void> {
     { registerCallResultHandler },
   ] = await Promise.all([
     import('./features/call-schedule/routes/callSchedule'),
-    import('./features/call-schedule/routes/lakeshore'),
+    import('./features/call-schedule/routes/hotel/lakeshore'),
     import('./features/call-schedule/services/database'),
     import('./features/call-schedule/services/callMonitorService'),
     import('./features/call-schedule/services/callScheduleService'),

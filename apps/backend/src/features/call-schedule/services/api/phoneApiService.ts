@@ -1,6 +1,6 @@
-import { newRockDevice } from './device/newRockApi';
-import { yeastarDevice } from './device/yeastarApi';
-import { freeSwitchDevice } from './device/freeSwitchApi';
+import { newRockDevice } from './device/newRock';
+import { yeastarDevice } from './device/yeastar';
+import { freeSwitchDevice } from './device/freeSwitch';
 
 // ─────────────────────────────────────────────
 // Interface
