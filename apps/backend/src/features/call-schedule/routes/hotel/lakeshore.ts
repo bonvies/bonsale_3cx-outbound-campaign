@@ -2,7 +2,7 @@ import express, { Router, Request, Response } from 'express';
 import { fromZonedTime } from 'date-fns-tz';
 import { getFiasConn } from '../../util/fiasConnectionStore';
 import { getSiteTimezone } from '../../util/timezone';
-import { checkin, checkout } from '../../services/api/freeSwitchPmsApi';
+import { checkin, checkout, TollAllow } from '../../services/api/freeSwitchPmsApi';
 
 const router: Router = express.Router();
 
@@ -10,6 +10,11 @@ const router: Router = express.Router();
 const VALID_ROOM_STATUSES = ['0', '1', '2', '4', '5', '6'];
 // statustime 早於「現在-10分」視為過期（規格書 4.3-5）
 const STATUSTIME_MAX_AGE_MS = 10 * 60 * 1000;
+
+// check-in 通話權限（見《FusionPBX / FreeSWITCH PMS-FIAS 整合說明書》4.1）：
+// 由煙波在 request 裡指定房型/規則對應的等級，未帶值則用預設
+const VALID_TOLL_ALLOWS: TollAllow[] = ['CS0', 'CS1', 'CS2', 'CS3'];
+const DEFAULT_TOLL_ALLOW: TollAllow = 'CS2';
 
 // 煙波 roomstatus → FIAS 標準 RS（Room Maid Status，見 Oracle FIAS spec Appendix B）
 // FIAS RS 代碼：1=Dirty/Vacant 2=Dirty/Occupied 3=Clean/Vacant 4=Clean/Occupied 5=Inspected/Vacant 6=Inspected/Occupied
@@ -137,21 +142,30 @@ router.post('/checkin', async (req: Request, res: Response) => {
 
     if (rejectIfNotWhitelisted(req, res)) return;
 
-    const { roomno, guestname } = req.body;
+    const { roomno, guestname, tollallow } = req.body;
     if (!roomno || !guestname) {
       respond(res, '004');
       return;
     }
 
-    // 入住權限暫固定為 CS2（市內＋國內＋行動，不含國際），之後如需分級可依房型/規則調整
-    const result = await checkin(String(roomno), String(guestname), 'CS2');
+    // 通話權限由煙波依房型/規則自行指定，未帶值則用預設（CS2：市內＋國內＋行動，不含國際）
+    let resolvedTollAllow: TollAllow = DEFAULT_TOLL_ALLOW;
+    if (tollallow !== undefined && tollallow !== null && tollallow !== '') {
+      if (!VALID_TOLL_ALLOWS.includes(String(tollallow) as TollAllow)) {
+        respond(res, '004');
+        return;
+      }
+      resolvedTollAllow = String(tollallow) as TollAllow;
+    }
+
+    const result = await checkin(String(roomno), String(guestname), resolvedTollAllow);
     if (!result.success) {
       console.error(`[Lakeshore] checkin 失敗（房間=${roomno}）:`, result.error);
       respond(res, '999');
       return;
     }
 
-    console.log(`[Lakeshore] check-in 完成：房間=${roomno} 房客=${guestname}`);
+    console.log(`[Lakeshore] check-in 完成：房間=${roomno} 房客=${guestname} 權限=${resolvedTollAllow}`);
     respond(res, '000');
   } catch (error) {
     console.error('[Lakeshore] POST /checkin error:', error);
