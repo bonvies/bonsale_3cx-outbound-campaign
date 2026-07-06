@@ -14,6 +14,7 @@ import { WebSocketServer } from 'ws';
 // 共用設定 API
 import configRouter from './shared/routes/config';
 import sharedBonsaleRouter from './shared/routes/bonsale';
+import { validateEnv } from './shared/util/validateEnv';
 
 // 自動外播 (Outbound Campaign) 與 語音通知 (Call Schedule) 模組均採 dynamic import，
 // 僅對應 feature flag 為 true 時才載入，避免停用時因缺少環境變數而在模組載入階段崩潰。
@@ -25,10 +26,11 @@ import sharedBonsaleRouter from './shared/routes/bonsale';
 dotenv.config();
 
 /**
- * 功能開關（必填）
+ * 功能開關與其餘環境變數，依目前啟用的組合（ENABLE_OUTBOUND_CAMPAIGN /
+ * ENABLE_CALL_SCHEDULE / TELEPHONE_EQUIPMENT / FIAS_MODE）一次驗證，
+ * 缺漏或填錯會在此處列出並終止服務。完整規則請見 apps/backend/.env.example
+ * 與 shared/util/validateEnv.ts。
  *
- * 兩個變數皆為必填，未設定將直接終止服務啟動。
- * 在 .env 中明確填寫 'true' 或 'false'：
  *   ENABLE_OUTBOUND_CAMPAIGN=true   → 啟用自動外播（連 Redis、建 WebSocket）
  *   ENABLE_OUTBOUND_CAMPAIGN=false  → 停用自動外播
  *   ENABLE_CALL_SCHEDULE=true       → 啟用語音通知（建 SQLite）
@@ -36,14 +38,8 @@ dotenv.config();
  *   ENABLE_FIAS=true                → 啟用 FIAS TCP 伺服器／客戶端（預設 true）
  *   ENABLE_FIAS=false               → 停用 FIAS（不佔用 TCP port，適合 Cloud Run）
  */
-if (process.env.ENABLE_OUTBOUND_CAMPAIGN === undefined) {
-  console.error('[FATAL] 環境變數 ENABLE_OUTBOUND_CAMPAIGN 未設定，請在 .env 填入 true 或 false');
-  process.exit(1);
-}
-if (process.env.ENABLE_CALL_SCHEDULE === undefined) {
-  console.error('[FATAL] 環境變數 ENABLE_CALL_SCHEDULE 未設定，請在 .env 填入 true 或 false');
-  process.exit(1);
-}
+validateEnv();
+
 const ENABLE_OUTBOUND_CAMPAIGN = process.env.ENABLE_OUTBOUND_CAMPAIGN === 'true';
 const ENABLE_CALL_SCHEDULE = process.env.ENABLE_CALL_SCHEDULE === 'true';
 const ENABLE_FIAS = process.env.ENABLE_FIAS !== 'false'; // 預設 true，設 false 可停用

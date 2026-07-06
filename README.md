@@ -80,67 +80,30 @@ bonsale_3cx-outbound-campaign/
 
 ### 必需的環境變數
 
-在專案根目錄建立 `.env` 檔案，包含以下設定項（具體參數請洽專案維護者）：
+在專案根目錄建立 `.env` 檔案（可參考 `apps/backend/.env.example`）。完整的必填／條件必填／選填與預設值分類請見該檔案，這裡只列出兩個功能開關本身，以及開啟 `ENABLE_OUTBOUND_CAMPAIGN` 時的重點必填變數：
 
 ```bash
-# 功能開關
+# 功能開關（必填）
 ENABLE_OUTBOUND_CAMPAIGN=true   # 自動外播功能
 ENABLE_CALL_SCHEDULE=true       # 自動語音通知 (Call Schedule)
 
-# 日誌時間時區設定（不填預設為 Asia/Taipei）
-LOG_TIMEZONE=Asia/Taipei
-
-# 業務時區設定（call-schedule 排程 / FIAS 叫醒時間轉換用）
-# 優先於 Bonsale timezoneIANA；不設定則回退至 Bonsale，再回退至 UTC
-SITE_TIMEZONE=Asia/Taipei
-
-# 應用服務設定
-HTTP_PORT=4020
-NODE_ENV=production
-
-# Bonsale API 連接
+# 以下於 ENABLE_OUTBOUND_CAMPAIGN=true 時必填
 BONSALE_HOST=<BONSALE_API_ENDPOINT>
 BONSALE_X_API_KEY=<YOUR_API_KEY>
 BONSALE_X_API_SECRET=<YOUR_API_SECRET>
-
-# 3CX 系統連接
 HTTP_HOST_3CX=<3CX_SERVER_URL>
 WS_HOST_3CX=<3CX_WEBSOCKET_URL>
-
-# AI 自動外撥參數
 HTTP_HOST_MESSAGE_FOR_AI=<MESSAGE_SERVICE_URL>
 POST_9000_BASIC_AUTH=<BASE64_ENCODED_CREDENTIALS>
-
-# 呼叫類型支援（Wqueue, Wextension, Wroutepoint）
-DEFAULT_SUPPORTED_CALL_TYPES=Wextension
-
-# 空閒檢查設定（啟用後當撥號名單太久沒撥號，系統自動嘗試恢復）
-IS_STARTIDLECHECK=true
-IDLE_CHECK_INTERVAL=30000
-MIN_IDLE_CHECK_INTERVAL=30000
-MAX_IDLE_CHECK_INTERVAL=300000
-IDLE_CHECK_BACKOFF_FACTOR=1.5
-
-# 3CX 管理員認證
-ADMIN_3CX_CLIENT_ID=<CLIENT_ID>
-ADMIN_3CX_CLIENT_SECRET=<CLIENT_SECRET>
-ADMIN_3CX_GRANT_TYPE=client_credentials
-
-# Redis 連接
-REDIS_URL=redis://redis:6379
 ```
+
+啟動時會依目前功能開關自動驗證上述變數，缺漏會在啟動當下列出並終止服務，不會等到執行期才出錯。
 
 ### Call Schedule 專屬環境變數（`ENABLE_CALL_SCHEDULE=true` 時必填）
 
 ```bash
 # 電話設備選擇（必填，無預設值）
-TELEPHONE_EQUIPMENT=NewRock     # 或 Yeastar
-
-# OM 事件監聽 Port
-OM_MONITOR_PORT=4022
-
-# 外播主叫分機號碼
-OM_CALL_FROM_EXTENSION=9038
+TELEPHONE_EQUIPMENT=NewRock     # 或 Yeastar、FreeSwitch
 
 # NewRock 設定（TELEPHONE_EQUIPMENT=NewRock 時必填）
 NEW_ROCK_API_HOST=<YOUR_NEW_ROCK_API_HOST>
@@ -151,31 +114,30 @@ YEASTAR_API_HOST=<YOUR_YEASTAR_API_HOST>
 YEASTAR_API_PATH=/openapi/v1.0
 YEASTAR_USERNAME=<YOUR_YEASTAR_USERNAME>
 YEASTAR_PASSWORD=<YOUR_YEASTAR_PASSWORD>
+
+# FreeSwitch 設定（TELEPHONE_EQUIPMENT=FreeSwitch 時必填）
+FREESWITCH_API_URL=<YOUR_FREESWITCH_API_URL>
+FREESWITCH_API_KEY=<YOUR_FREESWITCH_API_KEY>
 ```
+
+其餘選填變數（`OM_MONITOR_PORT`、`OM_CALL_FROM_EXTENSION`、`LAKESHORE_IP_WHITELIST` 等）請見 `apps/backend/.env.example`。
 
 ### FIAS PMS 整合環境變數
 
 ```bash
-# 房間號碼轉分機時加的前綴（例如填 9 → 房間 101 對應分機 9101）
-FIAS_EXTENSION_PREFIX=
-
-# FIAS 連線模式：
-#   server（預設）：我方開 TCP Server，等 PMS 連入（PMS Client 模式）
-#   client        ：我方主動連至 PMS TCP Server（PMS Server 模式，例如 FidServ Socket Server）
+# FIAS 連線模式（選填，預設 server）：
+#   server：我方開 TCP Server，等 PMS 連入（PMS Client 模式）
+#   client：我方主動連至 PMS TCP Server（PMS Server 模式，例如 FidServ Socket Server）
 FIAS_MODE=server
 
-# FIAS_MODE=server 時：我方監聽的 TCP port
-FIAS_PORT=4021
-
-# FIAS_MODE=client 時：PMS TCP Server 的位址與 port（必填）
+# FIAS_MODE=client 時必填：PMS TCP Server 的位址與 port
 # 範例：FidServ Device Settings → Device Type: Socket Server, Port: 5006
 # 注意：PMS 端需勾選「allow new connection」才能接受我方連線
 FIAS_PMS_HOST=<PMS_IP_OR_HOSTNAME>
 FIAS_PMS_PORT=<PMS_PORT>
-
-# FIAS_MODE=client 時：主動送 LA 心跳的間隔（毫秒），0 = 停用（預設）
-FIAS_HEARTBEAT_INTERVAL_MS=0
 ```
+
+其餘選填變數（`FIAS_PORT`、`FIAS_HEARTBEAT_INTERVAL_MS`、`FIAS_ENCODING`、`FIAS_EXTENSION_PREFIX` 等）請見 `apps/backend/.env.example`。
 
 ## 🚀 快速開始
 
