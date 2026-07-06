@@ -63,10 +63,10 @@ function parseStatusTime(statustime: string, timezone: string): Date | null {
   return fromZonedTime(local, timezone);
 }
 
-// POST /api/lakeshore/order
+// POST /api/v1/lakeshore/room/status
 // 煙波飯店房務系統推送房況異動 → 驗證後轉發給 Protel PMS（透過既有 FIAS TCP 連線）
 // 規格書：《房務狀態串接開發規格書》v1.0 2026-04-27
-router.post('/order', async (req: Request, res: Response) => {
+router.post('/room/status', async (req: Request, res: Response) => {
   try {
     console.log('[Lakeshore] ===== Incoming Request =====');
     console.log('[Lakeshore] Body:', JSON.stringify(req.body, null, 2));
@@ -118,12 +118,12 @@ router.post('/order', async (req: Request, res: Response) => {
 
     respond(res, '000');
   } catch (error) {
-    console.error('[Lakeshore] POST /order error:', error);
+    console.error('[Lakeshore] POST /room/status error:', error);
     respond(res, '999');
   }
 });
 
-// POST /api/lakeshore/test-fias-result
+// POST /api/v1/lakeshore/test-fias-result
 // 測試用：手動透過現有 FIAS TCP 連線送一筆 CA（電話費）給 PMS，確認通道是否暢通
 // Body: { roomNum: string, duration?: string, amount?: string, phoneNumber?: string }
 router.post('/test-fias-result', (req: Request, res: Response) => {

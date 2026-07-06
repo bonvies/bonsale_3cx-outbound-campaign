@@ -150,7 +150,7 @@ PMS 通知系統取消指定房間的叫醒排程。
 
 > 依 Oracle Hospitality FIAS Interface Specs（IFC8, 2.20.23）Appendix B 訂正；`RE`/`RS` 為官方定義的正式記錄類型，非我方自訂。
 
-房務系統透過 REST API（`POST /api/lakeshore/order`，見《房務狀態串接開發規格書》）推送房況異動，
+房務系統透過 REST API（`POST /api/v1/lakeshore/room/status`，見《房務狀態串接開發規格書》）推送房況異動，
 本系統驗證後**主動**轉發給 PMS。目前為 fire-and-forget，不等待 PMS 回應——
 FIAS 規格中的 `<ACK>/<NAK>` 僅為序列傳輸層級的位元組完整性確認，並非「PMS 是否成功處理」的業務回應，
 標準 FIAS 本身不提供 RE 記錄的業務層級 ack。
@@ -205,7 +205,7 @@ FIAS 規格中的 `<ACK>/<NAK>` 僅為序列傳輸層級的位元組完整性確
 | `FIAS_PORT` | TCP 監聽 Port | `4021` |
 | `FIAS_EXTENSION_PREFIX` | 房間號碼轉分機的前綴（如設 `9` 則 `101` → `9101`）| `""` |
 | `OM_CALL_FROM_EXTENSION` | 主叫分機（機器人） | `9038` |
-| `LAKESHORE_IP_WHITELIST` | `POST /api/lakeshore/order` 允許呼叫的來源 IP，逗號分隔；未設定則不檢核 | `""` |
+| `LAKESHORE_IP_WHITELIST` | `POST /api/v1/lakeshore/room/status` 允許呼叫的來源 IP，逗號分隔；未設定則不檢核 | `""` |
 
 ---
 

@@ -106,7 +106,7 @@ if (ENABLE_CALL_SCHEDULE) {
   callScheduleRouter_ = express.Router();
   lakeshoreRouter_ = express.Router();
   app.use('/api/call-schedule', callScheduleRouter_);
-  app.use('/api/lakeshore', lakeshoreRouter_);
+  app.use('/api/v1/lakeshore', lakeshoreRouter_);
 }
 
 // 根路由：健康檢查 / 版本確認
