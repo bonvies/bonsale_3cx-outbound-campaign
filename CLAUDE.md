@@ -186,8 +186,6 @@ Create `.env` at root with:
 # 3CX Integration
 HTTP_HOST_3CX=https://your-3cx-host:5015
 WS_HOST_3CX=wss://your-3cx-host:5015
-ADMIN_3CX_CLIENT_ID=xxx
-ADMIN_3CX_CLIENT_SECRET=xxx
 
 # Application
 HTTP_PORT=4020
