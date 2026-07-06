@@ -2,6 +2,7 @@ import express, { Router, Request, Response } from 'express';
 import { fromZonedTime } from 'date-fns-tz';
 import { getFiasConn } from '../../util/fiasConnectionStore';
 import { getSiteTimezone } from '../../util/timezone';
+import { checkin, checkout } from '../../services/api/freeSwitchPmsApi';
 
 const router: Router = express.Router();
 
@@ -53,6 +54,15 @@ function isWhitelisted(ip: string): boolean {
   return whitelist.includes(ip);
 }
 
+// 白名單檢核 + 拒絕時的回應，回傳 true 代表已回應、呼叫端應立即 return
+function rejectIfNotWhitelisted(req: Request, res: Response): boolean {
+  const clientIp = req.ip ?? req.socket.remoteAddress ?? '';
+  if (isWhitelisted(clientIp)) return false;
+  console.warn(`[Lakeshore] 拒絕非白名單 IP: ${clientIp}`);
+  respond(res, '003');
+  return true;
+}
+
 // statustime 格式為 "YYYY-MM-DD HH:mm:ss"，視為飯店當地時間（非 UTC）
 function parseStatusTime(statustime: string, timezone: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(statustime);
@@ -71,13 +81,7 @@ router.post('/room/status', async (req: Request, res: Response) => {
     console.log('[Lakeshore] ===== Incoming Request =====');
     console.log('[Lakeshore] Body:', JSON.stringify(req.body, null, 2));
 
-    // 檢核白名單
-    const clientIp = req.ip ?? req.socket.remoteAddress ?? '';
-    if (!isWhitelisted(clientIp)) {
-      console.warn(`[Lakeshore] 拒絕非白名單 IP: ${clientIp}`);
-      respond(res, '003');
-      return;
-    }
+    if (rejectIfNotWhitelisted(req, res)) return;
 
     const { roomno, statustime } = req.body;
     // 規格書欄位表寫 roomstatus，但 JSON 範例卻用 status，兩者皆接受
@@ -119,6 +123,68 @@ router.post('/room/status', async (req: Request, res: Response) => {
     respond(res, '000');
   } catch (error) {
     console.error('[Lakeshore] POST /room/status error:', error);
+    respond(res, '999');
+  }
+});
+
+// POST /api/v1/lakeshore/checkin
+// 客人入住 → 更新 FusionPBX 分機的通話權限與顯示名稱（透過 FIAS Middleware，見 docs/FIAS_INTEGRATION.md）
+// 欄位命名暫比照 /room/status 的慣例自行設計，待煙波提供正式規格書後再調整
+router.post('/checkin', async (req: Request, res: Response) => {
+  try {
+    console.log('[Lakeshore] ===== Incoming Checkin Request =====');
+    console.log('[Lakeshore] Body:', JSON.stringify(req.body, null, 2));
+
+    if (rejectIfNotWhitelisted(req, res)) return;
+
+    const { roomno, guestname } = req.body;
+    if (!roomno || !guestname) {
+      respond(res, '004');
+      return;
+    }
+
+    // 入住權限暫固定為 CS2（市內＋國內＋行動，不含國際），之後如需分級可依房型/規則調整
+    const result = await checkin(String(roomno), String(guestname), 'CS2');
+    if (!result.success) {
+      console.error(`[Lakeshore] checkin 失敗（房間=${roomno}）:`, result.error);
+      respond(res, '999');
+      return;
+    }
+
+    console.log(`[Lakeshore] check-in 完成：房間=${roomno} 房客=${guestname}`);
+    respond(res, '000');
+  } catch (error) {
+    console.error('[Lakeshore] POST /checkin error:', error);
+    respond(res, '999');
+  }
+});
+
+// POST /api/v1/lakeshore/checkout
+// 客人退房 → 還原 FusionPBX 分機的通話權限與顯示名稱（透過 FIAS Middleware）
+router.post('/checkout', async (req: Request, res: Response) => {
+  try {
+    console.log('[Lakeshore] ===== Incoming Checkout Request =====');
+    console.log('[Lakeshore] Body:', JSON.stringify(req.body, null, 2));
+
+    if (rejectIfNotWhitelisted(req, res)) return;
+
+    const { roomno } = req.body;
+    if (!roomno) {
+      respond(res, '004');
+      return;
+    }
+
+    const result = await checkout(String(roomno));
+    if (!result.success) {
+      console.error(`[Lakeshore] checkout 失敗（房間=${roomno}）:`, result.error);
+      respond(res, '999');
+      return;
+    }
+
+    console.log(`[Lakeshore] check-out 完成：房間=${roomno}`);
+    respond(res, '000');
+  } catch (error) {
+    console.error('[Lakeshore] POST /checkout error:', error);
     respond(res, '999');
   }
 });
