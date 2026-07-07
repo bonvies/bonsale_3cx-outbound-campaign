@@ -250,6 +250,24 @@ FIAS 規格中的 `<ACK>/<NAK>` 僅為序列傳輸層級的位元組完整性確
 \x02RE|RN101|RS1\x03
 ```
 
+### RE（反向）— DND 免打擾
+
+> `RE` 是雙向記錄類型：上面的 `RS` 是我方主動送給 PMS；這裡的 `DN` 則是 **PMS 主動送給我方**，兩者用途完全獨立，互不影響。
+
+僅於 `TELEPHONE_EQUIPMENT=FreeSwitch` 時生效：收到後透過 FIAS Middleware 的 `/pms/extension/update`（`do_not_disturb` 欄位）更新房間分機的 DND 狀態。本系統純轉發，DND 開啟後的實際擋話行為由 FreeSwitch/FusionPBX middleware 負責。
+
+**PMS → 系統**
+```
+\x02RE|RN<房間號碼>|DN<Y/N>\x03
+```
+
+| 欄位 | 說明 | 必填 |
+|------|------|------|
+| `RN` | 房間號碼（套用 `FIAS_EXTENSION_PREFIX` 後轉為分機號） | ✅（缺漏則忽略該訊息）|
+| `DN` | Do-Not-Disturb，`Y`=開啟 `N`=關閉 | ❌（缺漏則忽略，目前只處理 DND，不處理 RE 的其他欄位）|
+
+> 規格上 `CS`（Class of Service）也可能透過 `RE` 單獨送達（不經過 GI/GC），目前尚未確認 Protel 是否採此模式，暫不處理。
+
 ---
 
 ## 環境變數

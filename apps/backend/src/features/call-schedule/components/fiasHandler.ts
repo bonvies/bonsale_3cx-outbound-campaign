@@ -4,7 +4,7 @@ import { getDatabase } from '@call-schedule/services/database';
 import { createCallSchedule, deleteCallSchedule } from '@/features/call-schedule/services/callService/callScheduleService';
 import { getSiteTimezone } from '@call-schedule/util/timezone';
 import { setFiasConn } from '@call-schedule/util/fiasConnectionStore';
-import { checkin, checkout, TollAllow } from '@call-schedule/services/api/freeSwitchPmsApi';
+import { checkin, checkout, update, TollAllow } from '@call-schedule/services/api/freeSwitchPmsApi';
 
 /**
  * FIAS 協定沒有前端，PMS 送來的是飯店當地時間（TI/DT），
@@ -281,6 +281,42 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
         console.log(`[FIAS] GC 換房完成：${oldRoomNumber}（分機=${oldExtension}）→ ${newRoomNumber}（分機=${newExtension}）房客=${guestName ?? '(未提供)'} 權限=${tollAllow}`);
       } else {
         console.error(`[FIAS] GC 換房：新房入住失敗（房間=${newRoomNumber} 分機=${newExtension}）:`, checkinResult.error);
+      }
+      break;
+    }
+
+    // ── RE：分機設備狀態（Room Equipment）──────
+    // 見 Oracle IFC8 FIAS Interface Specs「RE - Room equipment status」：這裡只處理
+    // DN（Do-Not-Disturb，From PMS）方向。RS（我方主動回報房況給 Protel）走的是
+    // routes/hotel/lakeshore.ts 的 /room/status，跟這裡收到的 RE 是完全不同流向，不會衝突。
+    // 純轉發：DND 開啟後的實際擋話行為由 FreeSwitch/FusionPBX middleware 負責，我方不做判斷。
+    // 註：規格上 CS 欄位也可能透過 RE 單獨送達（不經過 GI/GC），目前尚未確認 Protel 是否採此模式，暫不處理。
+    case 'RE': {
+      const roomNumber = msg.fields.RN;
+      const dnFlag = msg.fields.DN; // Y/N
+
+      if (!roomNumber) {
+        console.warn('[FIAS] RE 缺少房號（RN），忽略此訊息');
+        break;
+      }
+      if (dnFlag === undefined) {
+        console.log(`[FIAS] RE 收到（房間=${roomNumber}），未帶 DN 欄位，忽略（目前只處理 DND）`);
+        break;
+      }
+      if (!isFreeSwitchEquipment()) {
+        console.log(`[FIAS] RE 收到 DND 通知（房間=${roomNumber}），但 TELEPHONE_EQUIPMENT 非 FreeSwitch，略過`);
+        break;
+      }
+
+      const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
+      const extension = extensionPrefix + roomNumber;
+      const doNotDisturb = dnFlag === 'Y';
+
+      const result = await update({ extension, doNotDisturb });
+      if (result.success) {
+        console.log(`[FIAS] RE DND 更新完成：房間=${roomNumber} 分機=${extension} DND=${doNotDisturb}`);
+      } else {
+        console.error(`[FIAS] RE DND 更新失敗（房間=${roomNumber} 分機=${extension}）:`, result.error);
       }
       break;
     }
