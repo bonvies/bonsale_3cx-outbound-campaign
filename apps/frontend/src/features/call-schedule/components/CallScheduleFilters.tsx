@@ -4,6 +4,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
 import { renderTimeViewClock } from '@mui/x-date-pickers'
 import type { CallScheduleFilters as FilterType } from '../types/callSchedule'
+import { STATUS_LABEL } from '../types/callSchedule'
 
 interface CallScheduleFiltersProps {
   filters: FilterType
@@ -104,15 +105,13 @@ export function CallScheduleFilters({
               multiple
               renderValue={(selected) => {
                 const selectedArray = selected as string[]
-                if (selectedArray.length === 0) {
-                  return '全部'
-                }
-                return selectedArray.join(', ')
+                if (selectedArray.length === 0) return '全部'
+                return selectedArray.map(s => STATUS_LABEL[s as keyof typeof STATUS_LABEL] ?? s).join(', ')
               }}
             >
-              <MenuItem value="排程中">排程中</MenuItem>
-              <MenuItem value="已完成">已完成</MenuItem>
-              <MenuItem value="失敗">失敗</MenuItem>
+              {Object.entries(STATUS_LABEL).map(([value, label]) => (
+                <MenuItem key={value} value={value}>{label}</MenuItem>
+              ))}
             </Select>
           </FormControl>
         </Grid>

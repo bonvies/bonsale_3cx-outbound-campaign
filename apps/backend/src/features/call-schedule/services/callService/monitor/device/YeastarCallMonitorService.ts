@@ -1,8 +1,7 @@
 import WebSocket from 'ws';
-import { logWithTimestamp, errorWithTimestamp, warnWithTimestamp } from '@shared-local/util/timestamp';
 import { ICallMonitorService } from '../../callMonitorService';
 import { registerCall, cancelScheduleJobs, handleAnswer, handleBye } from '../callMonitorCore';
-import { getYeastarAccessToken, getYeastarApiHost } from '../../api/device/yeastarApi';
+import { getYeastarAccessToken, getYeastarApiHost } from '../../device/yeastar';
 
 const HEARTBEAT_INTERVAL_MS = 25 * 1000;
 const CDR_TYPE = 30012; // 通話結束 CDR 事件
@@ -44,9 +43,9 @@ function connect(): void {
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   ws.on('open', () => {
-    logWithTimestamp('[YeastarMonitor] 🔌 WebSocket 已連線');
+    console.log('[YeastarMonitor] 🔌 WebSocket 已連線');
     ws.send(JSON.stringify({ topic_list: [CDR_TYPE] }));
-    logWithTimestamp(`[YeastarMonitor] 已訂閱 CDR 事件 (type ${CDR_TYPE})`);
+    console.log(`[YeastarMonitor] 已訂閱 CDR 事件 (type ${CDR_TYPE})`);
 
     heartbeatTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -62,18 +61,18 @@ function connect(): void {
       const wsMsg = JSON.parse(raw) as YeastarWsMessage;
       handleCdrEvent(wsMsg);
     } catch (err) {
-      errorWithTimestamp('[YeastarMonitor] 無法解析訊息:', err);
+      console.error('[YeastarMonitor] 無法解析訊息:', err);
     }
   });
 
   ws.on('close', (code, reason) => {
-    logWithTimestamp(`[YeastarMonitor] ❌ 連線關閉 code=${code} reason=${reason.toString()}，5 秒後重連`);
+    console.log(`[YeastarMonitor] ❌ 連線關閉 code=${code} reason=${reason.toString()}，5 秒後重連`);
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     setTimeout(connect, 5000);
   });
 
   ws.on('error', (err) => {
-    errorWithTimestamp('[YeastarMonitor] WebSocket 錯誤:', err);
+    console.error('[YeastarMonitor] WebSocket 錯誤:', err);
   });
 }
 
@@ -88,22 +87,22 @@ function handleCdrEvent(wsMsg: YeastarWsMessage): void {
   try {
     payload = JSON.parse(wsMsg.msg);
   } catch {
-    errorWithTimestamp('[YeastarMonitor] msg 無法解析:', wsMsg.msg);
+    console.error('[YeastarMonitor] msg 無法解析:', wsMsg.msg);
     return;
   }
 
   const { call_from, call_to, status } = payload;
-  logWithTimestamp(`[YeastarMonitor] CDR call_from=${call_from} call_to=${call_to} status=${status}`);
+  console.log(`[YeastarMonitor] CDR call_from=${call_from} call_to=${call_to} status=${status}`);
 
   if (status === 'ANSWERED') {
     handleAnswer(call_to);
   } else if (status === 'NO ANSWER') {
     // NO ANSWER 或其他非接聽狀態 → 觸發重試邏輯
     handleBye(call_to).catch(err =>
-      errorWithTimestamp('[YeastarMonitor] handleBye error:', err)
+      console.error('[YeastarMonitor] handleBye error:', err)
     );
   } else {
-    warnWithTimestamp('⚠️ 未知的撥號狀態回傳')
+    console.warn('⚠️ 未知的撥號狀態回傳')
   }
 }
 
@@ -115,8 +114,8 @@ export const yeastarCallMonitor: ICallMonitorService = {
   registerCall,
   cancelScheduleJobs,
 
-  start() {
-    logWithTimestamp('[YeastarMonitor] 🚀 啟動 Yeastar CDR 事件監聽');
+  start(_router?) {
+    console.log('[YeastarMonitor] 🚀 啟動 Yeastar CDR 事件監聽');
     connect();
   },
 };

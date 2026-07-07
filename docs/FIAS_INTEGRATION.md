@@ -146,6 +146,58 @@ PMS 通知系統取消指定房間的叫醒排程。
 
 ---
 
+### RE — 房務狀態通知（Room Equipment / Room Status）
+
+> 依 Oracle Hospitality FIAS Interface Specs（IFC8, 2.20.23）Appendix B 訂正；`RE`/`RS` 為官方定義的正式記錄類型，非我方自訂。
+
+房務系統透過 REST API（`POST /api/v1/lakeshore/room/status`，見《房務狀態串接開發規格書》）推送房況異動，
+本系統驗證後**主動**轉發給 PMS。目前為 fire-and-forget，不等待 PMS 回應——
+FIAS 規格中的 `<ACK>/<NAK>` 僅為序列傳輸層級的位元組完整性確認，並非「PMS 是否成功處理」的業務回應，
+標準 FIAS 本身不提供 RE 記錄的業務層級 ack。
+
+**系統 → PMS**
+```
+\x02RE|RN<房間號碼>|RS<FIAS房務狀態>\x03
+```
+
+| 欄位 | 說明 | 格式 |
+|------|------|------|
+| `RN` | 房間號碼 | 數字字串，如 `101` |
+| `RS` | FIAS 標準 Room Maid Status（見下表） | `N, 2` |
+
+**FIAS RS 標準代碼（Appendix B）**
+
+| 代碼 | 意義 |
+|------|------|
+| 1 | Dirty/Vacant |
+| 2 | Dirty/Occupied |
+| 3 | Clean/Vacant |
+| 4 | Clean/Occupied |
+| 5 | Inspected/Vacant |
+| 6 | Inspected/Occupied |
+
+> ⚠️ 規格明確指出：**無法透過外部系統把房間狀態設為 Out-of-Order/Out-of-Service**，此狀態只能在 PMS 本身操作。
+
+**煙波 roomstatus → FIAS RS 對照表（我方暫定，待實測調整，見 `routes/lakeshore.ts`）**
+
+煙波的 `roomstatus` 沒有回報房間是否有客人入住，故一律假設 Vacant；且部分代碼無明確對應，為暫定值：
+
+| 煙波 roomstatus | 說明 | 對應 FIAS RS |
+|------|------|------|
+| 0 | cleaned | 3 Clean/Vacant |
+| 1 | dirty | 1 Dirty/Vacant |
+| 2 | out of service | 2（規格禁止，僅送出觀察 Protel 實際反應） |
+| 4 | touched | 2 Dirty/Occupied |
+| 5 | cleaning in progress | 1 Dirty/Vacant |
+| 6 | checked | 5 Inspected/Vacant |
+
+**範例：101 房狀態變更為 dirty（煙波 roomstatus=1 → FIAS RS=1）**
+```
+\x02RE|RN101|RS1\x03
+```
+
+---
+
 ## 環境變數
 
 | 變數 | 說明 | 預設值 |
@@ -153,6 +205,7 @@ PMS 通知系統取消指定房間的叫醒排程。
 | `FIAS_PORT` | TCP 監聽 Port | `4021` |
 | `FIAS_EXTENSION_PREFIX` | 房間號碼轉分機的前綴（如設 `9` 則 `101` → `9101`）| `""` |
 | `OM_CALL_FROM_EXTENSION` | 主叫分機（機器人） | `9038` |
+| `LAKESHORE_IP_WHITELIST` | `POST /api/v1/lakeshore/room/status` 允許呼叫的來源 IP，逗號分隔；未設定則不檢核 | `""` |
 
 ---
 

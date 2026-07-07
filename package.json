@@ -18,6 +18,9 @@
     "clean": "turbo run clean && rm -rf node_modules .turbo",
     "docker:up": "docker-compose up --build",
     "docker:down": "docker-compose down",
+    "deploy:backend": "docker build --platform linux/amd64 -f apps/backend/Dockerfile -t gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_backend:latest . && docker push gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_backend:latest",
+    "deploy:frontend": "docker build --platform linux/amd64 -f apps/frontend/Dockerfile -t gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_frontend:latest . && docker push gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_frontend:latest",
+    "deploy": "pnpm deploy:backend && pnpm deploy:frontend",
     "prepare": "husky"
   },
   "lint-staged": {

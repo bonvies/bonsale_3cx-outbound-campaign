@@ -1,6 +1,5 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { ProjectManager } from '../class/projectManager';
-import { logWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 
 /**
  * 廣播所有專案資訊給所有連線中的 WebSocket 客戶端
@@ -57,13 +56,13 @@ export async function broadcastAllProjects(
     
     // 記錄廣播結果
     const triggerInfo = includeProjectId ? `由專案 ${includeProjectId} 觸發` : '系統觸發';
-    logWithTimestamp(
+    console.log(
       `✅ 已廣播所有專案資訊 (${triggerInfo}) - ` +
       `專案數: ${allProjects.length}, 客戶端數: ${connectedClients}`
     );
     
   } catch (error) {
-    errorWithTimestamp('❌ 廣播所有專案資訊失敗:', error);
+    console.error('❌ 廣播所有專案資訊失敗:', error);
     throw error; // 重新拋出錯誤，讓調用方決定如何處理
   }
 }
@@ -121,5 +120,5 @@ export async function broadcastError(
     }
   });
   
-  errorWithTimestamp(`❌ 已廣播錯誤訊息給 ${connectedClients} 個客戶端:`, errorData);
+  console.error(`❌ 已廣播錯誤訊息給 ${connectedClients} 個客戶端:`, errorData);
 }

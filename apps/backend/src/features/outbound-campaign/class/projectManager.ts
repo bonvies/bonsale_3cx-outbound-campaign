@@ -1,6 +1,5 @@
 import redisClient from '../services/redis';
 import Project from './project';
-import { logWithTimestamp, errorWithTimestamp } from '@shared-local/util/timestamp';
 
 // 定義 CallRestriction 型別
 type CallRestriction = {
@@ -33,7 +32,7 @@ export class ProjectManager {
   static async saveProject(project: Project): Promise<void> {
     try {
       const projectKey = `${this.PROJECT_PREFIX}${project.projectId}`;
-      
+
       // 將專案序列化（注意：WebSocket 連接不能序列化，需要特殊處理）
       const projectData = {
         grant_type: project.grant_type,
@@ -59,16 +58,16 @@ export class ProjectManager {
 
       // 儲存專案資料
       await redisClient.hSet(projectKey, projectData);
-      
+
       // 將專案 ID 加入活躍專案集合
       await redisClient.sAdd(this.ACTIVE_PROJECTS_SET, project.projectId);
-      
+
       // 設置過期時間（註解掉表示永不過期）
       // await redisClient.expire(projectKey, 24 * 60 * 60);
-      
-      logWithTimestamp(`專案 ${project.projectId} 已儲存到 Redis（永久保存）`);
+
+      console.log(`專案 ${project.projectId} 已儲存到 Redis（永久保存）`);
     } catch (error) {
-      errorWithTimestamp('儲存專案到 Redis 失敗:', error);
+      console.error('儲存專案到 Redis 失敗:', error);
       throw error;
     }
   }
@@ -78,7 +77,7 @@ export class ProjectManager {
     try {
       const projectKey = `${this.PROJECT_PREFIX}${projectId}`;
       const projectData = await redisClient.hGetAll(projectKey);
-      
+
       if (!projectData || Object.keys(projectData).length === 0) {
         return null;
       }
@@ -95,7 +94,7 @@ export class ProjectManager {
         projectData.error || null,
         projectData.access_token || null,
         projectData.caller ? JSON.parse(projectData.caller) : null,
-        projectData.latestCallRecord =  projectData.latestCallRecord ? JSON.parse(projectData.latestCallRecord) : [],
+        projectData.latestCallRecord = projectData.latestCallRecord ? JSON.parse(projectData.latestCallRecord) : [],
         parseInt(projectData.agentQuantity) || 0,
         projectData.recurrence || null,
         projectData.callRestriction ? JSON.parse(projectData.callRestriction) : [] as CallRestriction[],
@@ -104,7 +103,7 @@ export class ProjectManager {
 
       return project;
     } catch (error) {
-      errorWithTimestamp('從 Redis 取得專案失敗:', error);
+      console.error('從 Redis 取得專案失敗:', error);
       return null;
     }
   }
@@ -114,7 +113,7 @@ export class ProjectManager {
     try {
       return await redisClient.sMembers(this.ACTIVE_PROJECTS_SET);
     } catch (error) {
-      errorWithTimestamp('取得活躍專案列表失敗:', error);
+      console.error('取得活躍專案列表失敗:', error);
       return [];
     }
   }
@@ -124,17 +123,17 @@ export class ProjectManager {
     try {
       const projectIds = await this.getAllActiveProjectIds();
       const projects: Project[] = [];
-      
+
       for (const projectId of projectIds) {
         const project = await this.getProject(projectId);
         if (project) {
           projects.push(project);
         }
       }
-      
+
       return projects;
     } catch (error) {
-      errorWithTimestamp('取得所有活躍專案失敗:', error);
+      console.error('取得所有活躍專案失敗:', error);
       return [];
     }
   }
@@ -145,7 +144,7 @@ export class ProjectManager {
       const count = await redisClient.sCard(this.ACTIVE_PROJECTS_SET);
       return count;
     } catch (error) {
-      errorWithTimestamp('取得活躍專案數量失敗:', error);
+      console.error('取得活躍專案數量失敗:', error);
       return 0;
     }
   }
@@ -178,13 +177,13 @@ export class ProjectManager {
         updatedAt: new Date().toISOString()
       });
       if (!updated) {
-        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過狀態更新`);
+        console.log(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過狀態更新`);
         return;
       }
 
-      logWithTimestamp(`專案 ${projectId} 狀態更新為: ${state}`);
+      console.log(`專案 ${projectId} 狀態更新為: ${state}`);
     } catch (error) {
-      errorWithTimestamp('更新專案狀態失敗:', error);
+      console.error('更新專案狀態失敗:', error);
       throw error;
     }
   }
@@ -198,13 +197,13 @@ export class ProjectManager {
         updatedAt: new Date().toISOString()
       });
       if (!updated) {
-        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過 Access Token 更新`);
+        console.log(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過 Access Token 更新`);
         return;
       }
 
-      logWithTimestamp(`專案 ${projectId} Access Token 已更新`);
+      console.log(`專案 ${projectId} Access Token 已更新`);
     } catch (error) {
-      errorWithTimestamp('更新專案 Access Token 失敗:', error);
+      console.error('更新專案 Access Token 失敗:', error);
       throw error;
     }
   }
@@ -228,13 +227,13 @@ export class ProjectManager {
         updatedAt: new Date().toISOString()
       });
       if (!updated) {
-        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過 Caller 資訊更新`);
+        console.log(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過 Caller 資訊更新`);
         return;
       }
 
-      logWithTimestamp(`專案 ${projectId} Caller 資訊已更新`);
+      console.log(`專案 ${projectId} Caller 資訊已更新`);
     } catch (error) {
-      errorWithTimestamp('更新專案 Caller 資訊失敗:', error);
+      console.error('更新專案 Caller 資訊失敗:', error);
       throw error;
     }
   }
@@ -248,13 +247,13 @@ export class ProjectManager {
         updatedAt: new Date().toISOString()
       });
       if (!updated) {
-        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過撥打記錄更新`);
+        console.log(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過撥打記錄更新`);
         return;
       }
 
-      logWithTimestamp(`專案 ${projectId} 當前撥打記錄已更新`);
+      console.log(`專案 ${projectId} 當前撥打記錄已更新`);
     } catch (error) {
-      errorWithTimestamp('更新專案當前撥打記錄失敗:', error);
+      console.error('更新專案當前撥打記錄失敗:', error);
       throw error;
     }
   }
@@ -268,17 +267,17 @@ export class ProjectManager {
         updatedAt: new Date().toISOString()
       });
       if (!updated) {
-        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過錯誤狀態更新`);
+        console.log(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過錯誤狀態更新`);
         return;
       }
 
       if (errorMessage) {
-        logWithTimestamp(`專案 ${projectId} 錯誤狀態已更新: ${errorMessage}`);
+        console.log(`專案 ${projectId} 錯誤狀態已更新: ${errorMessage}`);
       } else {
-        logWithTimestamp(`專案 ${projectId} 錯誤狀態已清除`);
+        console.log(`專案 ${projectId} 錯誤狀態已清除`);
       }
     } catch (error) {
-      errorWithTimestamp('更新專案錯誤狀態失敗:', error);
+      console.error('更新專案錯誤狀態失敗:', error);
       throw error;
     }
   }
@@ -292,17 +291,17 @@ export class ProjectManager {
         updatedAt: new Date().toISOString()
       });
       if (!updated) {
-        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過資訊狀態更新`);
+        console.log(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過資訊狀態更新`);
         return;
       }
 
       if (infoMessage) {
-        logWithTimestamp(`專案 ${projectId} 資訊狀態已更新: ${infoMessage}`);
+        console.log(`專案 ${projectId} 資訊狀態已更新: ${infoMessage}`);
       } else {
-        logWithTimestamp(`專案 ${projectId} 資訊狀態已清除`);
+        console.log(`專案 ${projectId} 資訊狀態已清除`);
       }
     } catch (error) {
-      errorWithTimestamp('更新專案資訊狀態失敗:', error);
+      console.error('更新專案資訊狀態失敗:', error);
       throw error;
     }
   }
@@ -316,17 +315,17 @@ export class ProjectManager {
         updatedAt: new Date().toISOString()
       });
       if (!updated) {
-        logWithTimestamp(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過警告狀態更新`);
+        console.log(`專案 ${projectId} 不存在於 Redis（可能已停止移除），跳過警告狀態更新`);
         return;
       }
 
       if (warningMessage) {
-        logWithTimestamp(`專案 ${projectId} 警告狀態已更新: ${warningMessage}`);
+        console.log(`專案 ${projectId} 警告狀態已更新: ${warningMessage}`);
       } else {
-        logWithTimestamp(`專案 ${projectId} 警告狀態已清除`);
+        console.log(`專案 ${projectId} 警告狀態已清除`);
       }
     } catch (error) {
-      errorWithTimestamp('更新專案警告狀態失敗:', error);
+      console.error('更新專案警告狀態失敗:', error);
       throw error;
     }
   }
@@ -338,7 +337,7 @@ export class ProjectManager {
       const exists = await redisClient.exists(projectKey);
       return exists === 1;
     } catch (error) {
-      errorWithTimestamp('檢查專案是否存在失敗:', error);
+      console.error('檢查專案是否存在失敗:', error);
       return false;
     }
   }
@@ -347,16 +346,16 @@ export class ProjectManager {
   static async removeProject(projectId: string): Promise<void> {
     try {
       const projectKey = `${this.PROJECT_PREFIX}${projectId}`;
-      
+
       // 刪除專案資料
       await redisClient.del(projectKey);
-      
+
       // 從活躍專案集合中移除
       await redisClient.sRem(this.ACTIVE_PROJECTS_SET, projectId);
-      
-      logWithTimestamp(`專案 ${projectId} 已從 Redis 移除`);
+
+      console.log(`專案 ${projectId} 已從 Redis 移除`);
     } catch (error) {
-      errorWithTimestamp('從 Redis 移除專案失敗:', error);
+      console.error('從 Redis 移除專案失敗:', error);
       throw error;
     }
   }
@@ -365,14 +364,14 @@ export class ProjectManager {
   static async clearAllProjects(): Promise<void> {
     try {
       const projectIds = await this.getAllActiveProjectIds();
-      
+
       for (const projectId of projectIds) {
         await this.removeProject(projectId);
       }
-      
-      logWithTimestamp('所有專案已清除');
+
+      console.log('所有專案已清除');
     } catch (error) {
-      errorWithTimestamp('清除所有專案失敗:', error);
+      console.error('清除所有專案失敗:', error);
       throw error;
     }
   }
@@ -387,10 +386,10 @@ export class ProjectManager {
     try {
       const projectIds = await this.getAllActiveProjectIds();
       const projects = await this.getAllActiveProjects();
-      
+
       const stopProjects = projects.filter(p => p.state === 'stop').length;
       const activeProjectsCount = projects.filter(p => p.state === 'active').length;
-      
+
       return {
         totalProjects: projectIds.length,
         activeProjects: projectIds,
@@ -398,7 +397,7 @@ export class ProjectManager {
         activeProjectsCount
       };
     } catch (error) {
-      errorWithTimestamp('取得專案統計資訊失敗:', error);
+      console.error('取得專案統計資訊失敗:', error);
       return {
         totalProjects: 0,
         activeProjects: [],

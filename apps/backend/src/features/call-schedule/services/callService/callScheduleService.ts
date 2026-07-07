@@ -1,10 +1,10 @@
 import { randomUUID } from 'crypto';
 import schedule from 'node-schedule';
 import { formatInTimeZone } from 'date-fns-tz';
-import { getDatabase } from './database';
-import { phoneApiService } from './api/phoneApiService';
+import { getDatabase } from '../database';
+import { phoneApiService } from './phoneApiService';
 import { registerCall, cancelScheduleJobs } from './callMonitorService';
-import { getBonsaleCompanySys } from '@shared-local/services/api/bonsale';
+import { getSiteTimezone } from '@call-schedule/util/timezone';
 
 // ─────────────────────────────────────────────
 // Types
@@ -18,9 +18,11 @@ type DbRow = {
   callRecord: string | null;
   notes: string | null;
   notificationContent: string;
-  retryInterval: string;
-  maxRetries: string;
+  retryInterval: number;
+  maxRetries: number;
   createdAt: string;
+  roomNum: string | null;
+  retryCount: number | null;
 };
 
 export type CallScheduleRecord = ReturnType<typeof rowToRecord>;
@@ -44,6 +46,7 @@ export type CreateCallScheduleParams = {
   retryInterval: string;   // 分鐘（字串）
   maxRetries: string;
   notes?: string;
+  roomNum?: string;
 };
 
 export type UpdateCallScheduleParams = {
@@ -55,6 +58,7 @@ export type UpdateCallScheduleParams = {
   notificationContent?: string;
   retryInterval?: string;
   maxRetries?: string;
+  roomNum?: string;
 };
 
 const SORTABLE_FIELDS: Record<string, string> = {
@@ -81,12 +85,9 @@ function rowToRecord(row: DbRow, timezone = 'UTC') {
     retryInterval: row.retryInterval,
     maxRetries: row.maxRetries,
     createdAt: row.createdAt,
+    roomNum: row.roomNum ?? undefined,
+    retryCount: row.retryCount ?? undefined,
   };
-}
-
-async function getTimezone(): Promise<string> {
-  const bonsaleCompanySys = await getBonsaleCompanySys();
-  return bonsaleCompanySys?.data?.timezoneIANA ?? 'UTC';
 }
 
 /** 建立並登記 node-schedule job（CREATE 和 UPDATE 共用） */
@@ -97,7 +98,7 @@ function scheduleCallJob(
   maxRetriesNum: number,
   retryIntervalMs: number,
 ): void {
-  const db            = getDatabase();
+  const db = getDatabase();
   const fromExtension = process.env.OM_CALL_FROM_EXTENSION ?? '9038';
 
   console.log(`[CallScheduleService] Scheduling job ${id} at ${jobDate.toISOString()}`);
@@ -107,14 +108,14 @@ function scheduleCallJob(
       const result = await phoneApiService.makeCall(fromExtension, extension);
       if (!result.success) {
         console.error(`[CallScheduleService] Call failed for ${id}:`, result.error);
-        db.prepare(`UPDATE call_schedules SET callStatus = '錯誤' WHERE id = ?`).run(id);
+        db.prepare(`UPDATE call_schedules SET callStatus = 'ERROR' WHERE id = ?`).run(id);
         return;
       }
-      db.prepare(`UPDATE call_schedules SET callStatus = '撥打中' WHERE id = ?`).run(id);
+      db.prepare(`UPDATE call_schedules SET callStatus = 'CALLING' WHERE id = ?`).run(id);
       registerCall({ scheduleId: id, extension, from: fromExtension, maxRetries: maxRetriesNum, retryIntervalMs });
     } catch (err) {
       console.error(`[CallScheduleService] Job execution failed for ${id}:`, err);
-      db.prepare(`UPDATE call_schedules SET callStatus = '錯誤' WHERE id = ?`).run(id);
+      db.prepare(`UPDATE call_schedules SET callStatus = 'ERROR' WHERE id = ?`).run(id);
     }
   });
 }
@@ -162,7 +163,7 @@ export async function listCallSchedules(params: ListCallSchedulesParams): Promis
     `SELECT COUNT(*) as count FROM call_schedules ${whereClause}`
   ).get(...queryParams) as { count: number };
 
-  const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const limitNum = Math.max(1, parseInt(limit, 10) || 10);
   const paginatedParams = [...queryParams, limitNum, (pageNum - 1) * limitNum];
 
@@ -170,74 +171,119 @@ export async function listCallSchedules(params: ListCallSchedulesParams): Promis
     `SELECT * FROM call_schedules ${whereClause} ORDER BY ${sortField} ${sortOrder} LIMIT ? OFFSET ?`
   ).all(...paginatedParams) as DbRow[];
 
-  const timezone = await getTimezone();
+  const timezone = await getSiteTimezone();
   return { data: rows.map(row => rowToRecord(row, timezone)), total: countResult.count };
 }
 
 /** GET by id */
 export async function getCallScheduleById(id: string): Promise<CallScheduleRecord | null> {
-  const db  = getDatabase();
+  const db = getDatabase();
   const row = db.prepare('SELECT * FROM call_schedules WHERE id = ?').get(id) as DbRow | undefined;
   if (!row) return null;
-  const timezone = await getTimezone();
+  const timezone = await getSiteTimezone();
   return rowToRecord(row, timezone);
 }
 
 /** POST - 建立排程並登記 job */
 export function createCallSchedule(params: CreateCallScheduleParams): string {
-  const { audioFile, date, extension, notificationContent, retryInterval, maxRetries, notes = '' } = params;
+  const { audioFile, date, extension, notificationContent, retryInterval, maxRetries, notes = '', roomNum } = params;
 
   if (new Date(date) <= new Date()) {
     throw new Error('date must be in the future');
   }
 
-  const db            = getDatabase();
-  const newId         = randomUUID();
-  const createdAt     = new Date().toISOString();
+  const db = getDatabase();
+  const newId = randomUUID();
+  const createdAt = new Date().toISOString();
   const maxRetriesNum = Math.max(0, parseInt(maxRetries, 10) || 0);
-  const retryIntervalMs = Math.max(0, parseFloat(retryInterval) || 0) * 60 * 1000;
+  const retryIntervalMin = Math.max(0, parseFloat(retryInterval) || 0);
+  const retryIntervalMs = retryIntervalMin * 60 * 1000;
 
   db.prepare(`
     INSERT INTO call_schedules
-      (id, audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, maxRetries, createdAt)
-    VALUES (?, ?, ?, ?, '排程中', NULL, ?, ?, ?, ?, ?)
-  `).run(newId, audioFile, date, extension, notes, notificationContent, retryInterval, maxRetries, createdAt);
+      (id, audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, maxRetries, createdAt, roomNum, retryCount)
+    VALUES (?, ?, ?, ?, 'SCHEDULED', NULL, ?, ?, ?, ?, ?, ?, NULL)
+  `).run(newId, audioFile, date, extension, notes, notificationContent, retryIntervalMin, maxRetriesNum, createdAt, roomNum ?? null);
 
   scheduleCallJob(newId, new Date(date), extension, maxRetriesNum, retryIntervalMs);
+  return newId;
+}
+
+export type TriggerImmediateCallParams = {
+  audioFile: string;
+  extension: string;
+  notificationContent: string;
+  retryInterval: string;  // 分鐘（字串）
+  maxRetries: string;
+  notes?: string;
+  roomNum?: string;
+};
+
+/** 立即撥打（不排程）：寫入 DB 後直接觸發，供外部系統（如 Lakeshore Hotel）推單使用 */
+export async function triggerImmediateCall(params: TriggerImmediateCallParams): Promise<string> {
+  const { audioFile, extension, notificationContent, retryInterval, maxRetries, notes = '', roomNum } = params;
+
+  const db = getDatabase();
+  const newId = randomUUID();
+  const createdAt = new Date().toISOString();
+  const maxRetriesNum = Math.max(0, parseInt(maxRetries, 10) || 0);
+  const retryIntervalMin = Math.max(0, parseFloat(retryInterval) || 0);
+  const retryIntervalMs = retryIntervalMin * 60 * 1000;
+  const fromExtension = process.env.OM_CALL_FROM_EXTENSION ?? '9038';
+
+  db.prepare(`
+    INSERT INTO call_schedules
+      (id, audioFile, date, extension, callStatus, callRecord, notes, notificationContent, retryInterval, maxRetries, createdAt, roomNum, retryCount)
+    VALUES (?, ?, ?, ?, 'CALLING', NULL, ?, ?, ?, ?, ?, ?, NULL)
+  `).run(newId, audioFile, createdAt, extension, notes, notificationContent, retryIntervalMin, maxRetriesNum, createdAt, roomNum ?? null);
+
+  const result = await phoneApiService.makeCall(fromExtension, extension);
+  if (!result.success) {
+    console.error(`[CallScheduleService] triggerImmediateCall failed for ${newId}:`, result.error);
+    db.prepare(`UPDATE call_schedules SET callStatus = 'ERROR' WHERE id = ?`).run(newId);
+    return newId;
+  }
+
+  registerCall({ scheduleId: newId, extension, from: fromExtension, maxRetries: maxRetriesNum, retryIntervalMs });
   return newId;
 }
 
 /** PUT - 更新欄位，取消舊 job，以新參數重新排程；回傳 false 表示 id 不存在 */
 export function updateCallSchedule(id: string, params: UpdateCallScheduleParams): boolean {
   const db = getDatabase();
-  const { audioFile, date, extension, callRecord, notes, notificationContent, retryInterval, maxRetries } = params;
+  const { audioFile, date, extension, callRecord, notes, notificationContent, retryInterval, maxRetries, roomNum } = params;
 
   if (date !== undefined && date !== null && new Date(date) <= new Date()) {
     throw new Error('date must be in the future');
   }
+
+  const retryIntervalMin = retryInterval !== undefined ? Math.max(0, parseFloat(retryInterval) || 0) : undefined;
+  const maxRetriesNum = maxRetries !== undefined ? Math.max(0, parseInt(maxRetries, 10) || 0) : undefined;
 
   db.prepare(`
     UPDATE call_schedules SET
       audioFile           = COALESCE(?, audioFile),
       date                = COALESCE(?, date),
       extension           = COALESCE(?, extension),
-      callStatus          = '排程中',
+      callStatus          = 'SCHEDULED',
+      retryCount          = NULL,
       callRecord          = COALESCE(?, callRecord),
       notes               = COALESCE(?, notes),
       notificationContent = COALESCE(?, notificationContent),
       retryInterval       = COALESCE(?, retryInterval),
-      maxRetries          = COALESCE(?, maxRetries)
+      maxRetries          = COALESCE(?, maxRetries),
+      roomNum             = COALESCE(?, roomNum)
     WHERE id = ?
   `).run(
     audioFile ?? null, date ?? null, extension ?? null,
     callRecord ?? null, notes ?? null, notificationContent ?? null,
-    retryInterval ?? null, maxRetries ?? null,
+    retryIntervalMin ?? null, maxRetriesNum ?? null, roomNum ?? null,
     id
   );
 
   const updatedRow = db.prepare(
     'SELECT date, extension, retryInterval, maxRetries FROM call_schedules WHERE id = ?'
-  ).get(id) as { date: string; extension: string; retryInterval: string; maxRetries: string } | undefined;
+  ).get(id) as { date: string; extension: string; retryInterval: number; maxRetries: number } | undefined;
 
   if (!updatedRow) return false;
 
@@ -246,8 +292,8 @@ export function updateCallSchedule(id: string, params: UpdateCallScheduleParams)
     id,
     new Date(updatedRow.date),
     updatedRow.extension,
-    Math.max(0, parseInt(updatedRow.maxRetries, 10) || 0),
-    Math.max(0, parseFloat(updatedRow.retryInterval) || 0) * 60 * 1000,
+    updatedRow.maxRetries,
+    updatedRow.retryInterval * 60 * 1000,
   );
   return true;
 }
@@ -261,30 +307,31 @@ export function deleteCallSchedule(id: string): void {
 
 /** 重啟恢復 - 將 DB 中未完成的排程重新登記 job */
 export function recoverPendingSchedules(): void {
-  const db  = getDatabase();
+  const db = getDatabase();
   const now = new Date().toISOString();
 
   // 已過期但仍是「排程中」→ 標記為錯誤，寫入原因
   db.prepare(`
     UPDATE call_schedules
-    SET callStatus = '錯誤',
+    SET callStatus = 'ERROR',
         notes = CASE WHEN notes IS NULL OR notes = '' THEN '伺服器重啟時排程已過期' ELSE notes || ' | 伺服器重啟時排程已過期' END
-    WHERE callStatus = '排程中' AND date < ?
+    WHERE callStatus = 'SCHEDULED' AND date < ?
   `).run(now);
 
   // 「等待重試」→ 標記為錯誤（retry job 在重啟後已消失，不會再執行），寫入原因
   db.prepare(`
     UPDATE call_schedules
-    SET callStatus = '錯誤',
+    SET callStatus = 'ERROR',
+        retryCount = NULL,
         notes = CASE WHEN notes IS NULL OR notes = '' THEN '伺服器重啟，重試排程已中斷' ELSE notes || ' | 伺服器重啟，重試排程已中斷' END
-    WHERE callStatus LIKE '等待重試%'
+    WHERE callStatus = 'WAITING_RETRY'
   `).run();
 
   // 未來的「排程中」→ 重新登記 job
   const rows = db.prepare(`
     SELECT id, date, extension, retryInterval, maxRetries
     FROM call_schedules
-    WHERE callStatus = '排程中' AND date >= ?
+    WHERE callStatus = 'SCHEDULED' AND date >= ?
   `).all(now) as Pick<DbRow, 'id' | 'date' | 'extension' | 'retryInterval' | 'maxRetries'>[];
 
   for (const row of rows) {
@@ -292,8 +339,8 @@ export function recoverPendingSchedules(): void {
       row.id,
       new Date(row.date),
       row.extension,
-      Math.max(0, parseInt(row.maxRetries, 10) || 0),
-      Math.max(0, parseFloat(row.retryInterval) || 0) * 60 * 1000,
+      row.maxRetries,
+      row.retryInterval * 60 * 1000,
     );
   }
 

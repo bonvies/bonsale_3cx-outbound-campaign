@@ -64,6 +64,7 @@ export async function createCallSchedule(form: CallScheduleFormData): Promise<vo
     retryInterval: form.retryInterval,
     maxRetries: form.maxRetries,
     notes: form.notes,
+    roomNum: form.roomNum || undefined,
   })
 }
 
@@ -76,9 +77,24 @@ export async function updateCallSchedule(id: string, form: CallScheduleFormData)
     retryInterval: form.retryInterval,
     maxRetries: form.maxRetries,
     notes: form.notes,
+    roomNum: form.roomNum || undefined,
   })
 }
 
 export async function deleteCallSchedule(id: string): Promise<void> {
   await axios.delete(`${BASE_URL}/${id}`)
+}
+
+export interface ImmediateCallPayload {
+  audioFile: string
+  extension: string
+  notificationContent: string
+  retryInterval: string
+  maxRetries: string
+  notes?: string
+  roomNum?: string
+}
+
+export async function triggerImmediateCall(payload: ImmediateCallPayload): Promise<void> {
+  await axios.post(`${BASE_URL}/immediate-call`, payload)
 }

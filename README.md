@@ -22,6 +22,14 @@
 - ✅ 未接聽自動重試（可設定次數與間隔）
 - ✅ Yeastar：REST API + WebSocket CDR 事件監聽 + 自動 Token 刷新
 - ✅ NewRock：HTTP 1.0 XML API + Push 事件接收
+- ✅ 通話結果回呼通知（callResultNotifier）
+
+### FIAS PMS 整合（飯店叫醒服務）
+- ✅ 支援 FIAS 協定與 PMS 系統雙向通訊
+- ✅ **Server 模式**：我方開 TCP Server，等待 PMS 連入（PMS Client 模式）
+- ✅ **Client 模式**：我方主動連至 PMS TCP Server（適用 FidServ Socket Server 等 PMS Server 模式）
+- ✅ 房間號碼自動轉換為分機號（可設定前綴）
+- ✅ Lakeshore Hotel 訂單流程：PMS 推送訂單 → 立即撥打 → 結果非同步回傳 PMS
 
 ## 🏗️ 專案架構
 
@@ -32,6 +40,15 @@ bonsale_3cx-outbound-campaign/
 ├── apps/
 │   ├── backend/                 # Node.js + TypeScript API 服務
 │   │   ├── src/
+│   │   │   ├── features/
+│   │   │   │   ├── outbound-campaign/   # 3CX 自動外播功能
+│   │   │   │   └── call-schedule/       # 自動語音通知 + FIAS PMS 整合
+│   │   │   │       ├── components/      # fiasHandler（FIAS 訊息處理）
+│   │   │   │       ├── services/
+│   │   │   │       │   ├── api/device/  # NewRock / Yeastar 實作
+│   │   │   │       │   └── monitor/     # 通話監控（NewRock / Yeastar）
+│   │   │   │       ├── util/            # fias.ts, fiasClient.ts, fiasConnectionStore.ts
+│   │   │   │       └── routes/          # callSchedule.ts, lakeshore.ts
 │   │   ├── Dockerfile
 │   │   └── package.json
 │   └── frontend/                # React + Vite 前端應用
@@ -66,24 +83,29 @@ bonsale_3cx-outbound-campaign/
 在專案根目錄建立 `.env` 檔案，包含以下設定項（具體參數請洽專案維護者）：
 
 ```bash
-# 3CX 系統連接
-HTTP_HOST_3CX=<3CX_SERVER_URL>
-WS_HOST_3CX=<3CX_WEBSOCKET_URL>
+# 功能開關
+ENABLE_OUTBOUND_CAMPAIGN=true   # 自動外播功能
+ENABLE_CALL_SCHEDULE=true       # 自動語音通知 (Call Schedule)
+
+# 日誌時間時區設定（不填預設為 Asia/Taipei）
+LOG_TIMEZONE=Asia/Taipei
+
+# 業務時區設定（call-schedule 排程 / FIAS 叫醒時間轉換用）
+# 優先於 Bonsale timezoneIANA；不設定則回退至 Bonsale，再回退至 UTC
+SITE_TIMEZONE=Asia/Taipei
 
 # 應用服務設定
 HTTP_PORT=4020
 NODE_ENV=production
 
-# 是否啟用完整日誌輸出 (true/false)
-IS_FULL_LOG=false
-
-# 服務器重啟時是否自動恢復撥打任務 (true/false)
-AUTO_RECOVER_ON_RESTART=true
-
 # Bonsale API 連接
 BONSALE_HOST=<BONSALE_API_ENDPOINT>
 BONSALE_X_API_KEY=<YOUR_API_KEY>
 BONSALE_X_API_SECRET=<YOUR_API_SECRET>
+
+# 3CX 系統連接
+HTTP_HOST_3CX=<3CX_SERVER_URL>
+WS_HOST_3CX=<3CX_WEBSOCKET_URL>
 
 # AI 自動外撥參數
 HTTP_HOST_MESSAGE_FOR_AI=<MESSAGE_SERVICE_URL>
@@ -129,6 +151,30 @@ YEASTAR_API_HOST=<YOUR_YEASTAR_API_HOST>
 YEASTAR_API_PATH=/openapi/v1.0
 YEASTAR_USERNAME=<YOUR_YEASTAR_USERNAME>
 YEASTAR_PASSWORD=<YOUR_YEASTAR_PASSWORD>
+```
+
+### FIAS PMS 整合環境變數
+
+```bash
+# 房間號碼轉分機時加的前綴（例如填 9 → 房間 101 對應分機 9101）
+FIAS_EXTENSION_PREFIX=
+
+# FIAS 連線模式：
+#   server（預設）：我方開 TCP Server，等 PMS 連入（PMS Client 模式）
+#   client        ：我方主動連至 PMS TCP Server（PMS Server 模式，例如 FidServ Socket Server）
+FIAS_MODE=server
+
+# FIAS_MODE=server 時：我方監聽的 TCP port
+FIAS_PORT=4021
+
+# FIAS_MODE=client 時：PMS TCP Server 的位址與 port（必填）
+# 範例：FidServ Device Settings → Device Type: Socket Server, Port: 5006
+# 注意：PMS 端需勾選「allow new connection」才能接受我方連線
+FIAS_PMS_HOST=<PMS_IP_OR_HOSTNAME>
+FIAS_PMS_PORT=<PMS_PORT>
+
+# FIAS_MODE=client 時：主動送 LA 心跳的間隔（毫秒），0 = 停用（預設）
+FIAS_HEARTBEAT_INTERVAL_MS=0
 ```
 
 ## 🚀 快速開始
@@ -179,7 +225,20 @@ gcloud config set project <YOUR_GCP_PROJECT_ID>
 gcloud auth configure-docker gcr.io
 ```
 
-2. **建立 Docker 映像檔**
+### 一鍵部署（推薦）
+
+```bash
+# 建立並推送後端 + 前端映像檔
+pnpm deploy
+
+# 僅部署後端
+pnpm deploy:backend
+
+# 僅部署前端
+pnpm deploy:frontend
+```
+
+### 手動建立映像檔
 
 ```bash
 # 建立後端映像檔（指定 Linux/AMD64 架構）
@@ -191,16 +250,13 @@ docker build --platform linux/amd64 \
 docker build --platform linux/amd64 \
   -f apps/frontend/Dockerfile \
   -t gcr.io/<YOUR_PROJECT>/bonsale_3cx-outbound-campaign_frontend:latest .
-```
 
-3. **推送到 GCP Container Registry**
-
-```bash
+# 推送到 GCP Container Registry
 docker push gcr.io/<YOUR_PROJECT>/bonsale_3cx-outbound-campaign_backend:latest
 docker push gcr.io/<YOUR_PROJECT>/bonsale_3cx-outbound-campaign_frontend:latest
 ```
 
-4. **VM 上部署**
+### VM 上部署
 
 在 GCP VM 上執行：
 
@@ -252,16 +308,12 @@ docker-compose -f docker-compose.prod.yml restart backend
 ## 📝 更新流程
 
 1. 修改程式碼並本地測試
-2. 建立新的 Docker 映像檔
-3. 推送到 GCP Container Registry
-4. 在 VM 上拉取新映像並重啟服務
+2. 建立新的 Docker 映像檔並推送（`pnpm deploy`）
+3. 在 VM 上拉取新映像並重啟服務
 
 ```bash
-# 本地：建立並推送映像檔
-docker build --platform linux/amd64 \
-  -f apps/backend/Dockerfile \
-  -t gcr.io/<YOUR_PROJECT>/bonsale_3cx-outbound-campaign_backend:latest .
-docker push gcr.io/<YOUR_PROJECT>/bonsale_3cx-outbound-campaign_backend:latest
+# 本地：一鍵建立並推送
+pnpm deploy:backend
 
 # VM 上：更新服務
 docker-compose -f docker-compose.prod.yml pull backend
@@ -272,13 +324,14 @@ docker-compose -f docker-compose.prod.yml up -d backend
 
 | 層級 | 技術 |
 |------|------|
-| **前端** | React + Vite + TypeScript |
+| **前端** | React 19 + Vite + TypeScript + Material-UI 7 |
 | **後端** | Node.js + Express + TypeScript |
 | **資料庫** | Redis（外播狀態快取）+ SQLite / better-sqlite3（語音通知排程） |
 | **容器化** | Docker + Docker Compose |
-| **通訊** | WebSocket（實時更新）+ REST API |
+| **通訊** | WebSocket（實時更新）+ REST API + TCP（FIAS PMS）|
 | **託管** | Google Cloud Platform (GCP) |
 | **電話設備** | NewRock OM API / Yeastar OpenAPI（可切換）|
+| **PMS 整合** | FIAS 協定（Server / Client 雙模式）|
 
 ## 🐛 故障排查
 
@@ -303,3 +356,9 @@ docker exec -it bonsale_3cx-outbound-campaign_redis redis-cli ping
 - 驗證前端容器是否正常運行：`docker-compose ps frontend`
 - 檢查埠口 4030 是否被佔用
 - 確認後端 API 地址是否正確配置
+
+### FIAS 連線問題
+
+- **Server 模式**：確認防火牆已開放 `FIAS_PORT`（預設 4021）供 PMS 連入
+- **Client 模式**：確認 PMS 端已勾選「allow new connection」，且 `FIAS_PMS_HOST` / `FIAS_PMS_PORT` 填寫正確
+- 查看後端日誌中 `[FIAS]` 前綴的訊息排查連線狀態
