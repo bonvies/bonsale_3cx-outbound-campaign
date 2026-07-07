@@ -1,7 +1,7 @@
 import { fromZonedTime } from 'date-fns-tz';
 import { FiasConn, FiasMessage } from '@call-schedule/types/fias/fiasTypes';
 import { getDatabase } from '@call-schedule/services/database';
-import { createCallSchedule, deleteCallSchedule } from '@call-schedule/services/callScheduleService';
+import { createCallSchedule, deleteCallSchedule } from '@/features/call-schedule/services/callService/callScheduleService';
 import { getSiteTimezone } from '@call-schedule/util/timezone';
 import { setFiasConn } from '@call-schedule/util/fiasConnectionStore';
 

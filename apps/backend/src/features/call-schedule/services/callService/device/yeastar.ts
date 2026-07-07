@@ -1,6 +1,6 @@
 import { ApiResult, IPhoneApiService } from '../phoneApiService';
 import { TokenResponseType, callDialType } from '@/features/call-schedule/types/api/yeastarApi';
-import * as yeastarApi from '../yeastarApi';
+import * as yeastarApi from '../../api/yeastarApi';
 
 const RETRY_INTERVAL_MS = 60 * 1000;
 

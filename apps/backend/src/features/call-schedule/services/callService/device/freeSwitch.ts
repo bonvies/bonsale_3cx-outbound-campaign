@@ -1,5 +1,5 @@
 import { ApiResult, IPhoneApiService } from '../phoneApiService';
-import * as freeSwitchApi from '../freeSwitchApi';
+import * as freeSwitchApi from '../../api/freeSwitchApi';
 
 export const freeSwitchDevice: IPhoneApiService = {
   async init(): Promise<void> {

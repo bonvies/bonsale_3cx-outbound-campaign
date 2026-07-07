@@ -403,6 +403,7 @@ async function setupCallSchedule(): Promise<void> {
   const [
     { default: callScheduleRouter },
     { default: lakeshoreRouter },
+    { default: freeSwitchWebhookRouter },
     { initDatabase },
     { startCallMonitorServer },
     { recoverPendingSchedules },
@@ -416,21 +417,27 @@ async function setupCallSchedule(): Promise<void> {
   ] = await Promise.all([
     import('./features/call-schedule/routes/callSchedule'),
     import('./features/call-schedule/routes/hotel/lakeshore'),
+    import('./features/call-schedule/routes/freeSwitchWebhook'),
     import('./features/call-schedule/services/database'),
-    import('./features/call-schedule/services/callMonitorService'),
-    import('./features/call-schedule/services/callScheduleService'),
-    import('./features/call-schedule/services/api/phoneApiService'),
+    import('./features/call-schedule/services/callService/callMonitorService'),
+    import('./features/call-schedule/services/callService/callScheduleService'),
+    import('./features/call-schedule/services/callService/phoneApiService'),
     import('./features/call-schedule/components/fiasHandler'),
     import('./features/call-schedule/util/fias'),
     import('./features/call-schedule/util/fiasClient'),
     import('./features/call-schedule/util/fiasConnectionStore'),
     import('./features/call-schedule/components/lakeshoreCallResultHandler'),
-    import('./features/call-schedule/services/monitor/callResultNotifier'),
+    import('./features/call-schedule/services/callService/monitor/callResultNotifier'),
   ]);
 
   // ── 路由填入 placeholder ──────────────────────────────────────────────────
   callScheduleRouter_!.use('/', callScheduleRouter);
   lakeshoreRouter_!.use('/', lakeshoreRouter);
+  // FreeSwitch CDR → FIAS posting webhook，僅 TELEPHONE_EQUIPMENT=FreeSwitch 時掛載，
+  // 掛在既有 callScheduleRouter 底下，最終路徑：POST /api/call-schedule/freeswitch-webhook
+  if (process.env.TELEPHONE_EQUIPMENT === 'FreeSwitch') {
+    callScheduleRouter_!.use('/freeswitch-webhook', freeSwitchWebhookRouter);
+  }
 
   // ── 資料庫初始化 ──────────────────────────────────────────────────────────
   await initDatabase();

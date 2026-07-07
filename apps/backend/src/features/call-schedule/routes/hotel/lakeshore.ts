@@ -2,7 +2,7 @@ import express, { Router, Request, Response } from 'express';
 import { fromZonedTime } from 'date-fns-tz';
 import { getFiasConn } from '../../util/fiasConnectionStore';
 import { getSiteTimezone } from '../../util/timezone';
-import { checkin, checkout, TollAllow } from '../../services/api/freeSwitchPmsApi';
+import { checkin, checkout, update, TollAllow } from '../../services/api/freeSwitchPmsApi';
 
 const router: Router = express.Router();
 
@@ -208,10 +208,51 @@ router.post('/checkout', async (req: Request, res: Response) => {
     }
 
     console.log(`[Lakeshore] check-out 完成：房間=${room_number}`);
-    respond(res, '000');
+    respond(res, '000', { data: result.data });
   } catch (error) {
     console.error('[Lakeshore] POST /checkout error:', error);
     respond(res, '999');
+  }
+});
+
+// POST /api/v1/lakeshore/update
+// 直接指定欄位更新分機（不經過 checkin/checkout 的自動規則），見《整合說明書》5.3。
+// toll_allow/effective_caller_id_name 為選填，未帶值時交給 FIAS Middleware 決定是否變更。
+router.post('/update', async (req: Request, res: Response) => {
+  try {
+    console.log('[Lakeshore] ===== Incoming Update Request =====');
+    console.log('[Lakeshore] Body:', JSON.stringify(req.body, null, 2));
+
+    if (rejectIfNotWhitelisted(req, res)) return;
+
+    const { extension, toll_allow, effective_caller_id_name, effective_caller_id_number } = req.body;
+    if (!extension) {
+      respond(res, '004', { message: 'extension is required' });
+      return;
+    }
+
+    if (toll_allow !== undefined && toll_allow !== null && toll_allow !== '' && !VALID_TOLL_ALLOWS.includes(String(toll_allow) as TollAllow)) {
+      respond(res, '004', { message: `invalid toll_allow: ${toll_allow}` });
+      return;
+    }
+
+    const result = await update({
+      extension: String(extension),
+      tollAllow: toll_allow ? (String(toll_allow) as TollAllow) : undefined,
+      effectiveCallerIdName: effective_caller_id_name ? String(effective_caller_id_name) : undefined,
+      effectiveCallerIdNumber: effective_caller_id_number ? String(effective_caller_id_number) : undefined,
+    });
+    if (!result.success) {
+      console.error(`[Lakeshore] update 失敗（分機=${extension}）:`, result.error);
+      respond(res, '999', { error: result.error });
+      return;
+    }
+
+    console.log(`[Lakeshore] update 完成：分機=${extension}`);
+    respond(res, '000', { data: result.data });
+  } catch (error) {
+    console.error('[Lakeshore] POST /update error:', error);
+    respond(res, '999', { error });
   }
 });
 

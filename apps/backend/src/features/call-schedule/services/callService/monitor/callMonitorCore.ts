@@ -1,6 +1,6 @@
 import schedule from 'node-schedule';
-import { getDatabase } from '../database';
-import { phoneApiService } from '../api/phoneApiService';
+import { getDatabase } from '../../database';
+import { phoneApiService } from '../phoneApiService';
 import { notifyCallResult } from './callResultNotifier';
 
 // ─────────────────────────────────────────────

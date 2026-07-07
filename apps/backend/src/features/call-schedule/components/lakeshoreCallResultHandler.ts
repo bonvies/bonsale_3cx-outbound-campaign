@@ -1,4 +1,4 @@
-import { ICallResultHandler, CallResultPayload } from '../services/monitor/callResultNotifier';
+import { ICallResultHandler, CallResultPayload } from '../services/callService/monitor/callResultNotifier';
 import { getFiasConn } from '../util/fiasConnectionStore';
 
 export class LakeshoreCallResultHandler implements ICallResultHandler {

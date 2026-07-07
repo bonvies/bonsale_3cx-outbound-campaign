@@ -1,5 +1,5 @@
 import { http10Post } from '@call-schedule/util/http10-client';
-import { ApiResult } from './phoneApiService';
+import { ApiResult } from '../callService/phoneApiService';
 import dotenv from 'dotenv';
 
 dotenv.config();

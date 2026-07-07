@@ -1,6 +1,6 @@
 import https from 'https';
 import axios from 'axios';
-import { ApiResult } from './phoneApiService';
+import { ApiResult } from '../callService/phoneApiService';
 import { TokenResponseType, callDialType } from '@/features/call-schedule/types/api/yeastarApi';
 import dotenv from 'dotenv';
 

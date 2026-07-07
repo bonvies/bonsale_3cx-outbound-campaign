@@ -1,8 +1,8 @@
 import { randomUUID } from 'crypto';
 import schedule from 'node-schedule';
 import { formatInTimeZone } from 'date-fns-tz';
-import { getDatabase } from './database';
-import { phoneApiService } from './api/phoneApiService';
+import { getDatabase } from '../database';
+import { phoneApiService } from './phoneApiService';
 import { registerCall, cancelScheduleJobs } from './callMonitorService';
 import { getSiteTimezone } from '@call-schedule/util/timezone';
 

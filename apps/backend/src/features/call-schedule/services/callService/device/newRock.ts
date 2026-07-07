@@ -1,5 +1,5 @@
 import { ApiResult, IPhoneApiService } from '../phoneApiService';
-import * as newRockApi from '../newRockApi';
+import * as newRockApi from '../../api/newRockApi';
 
 export const newRockDevice: IPhoneApiService = {
   async init() {

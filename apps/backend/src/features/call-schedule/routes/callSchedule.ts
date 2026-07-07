@@ -6,7 +6,7 @@ import {
   updateCallSchedule,
   deleteCallSchedule,
   triggerImmediateCall,
-} from '../services/callScheduleService';
+} from '../services/callService/callScheduleService';
 
 const router: Router = express.Router();
 
