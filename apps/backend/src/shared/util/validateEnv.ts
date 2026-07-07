@@ -57,6 +57,12 @@ const schema = Joi.object({
     otherwise: Joi.allow(''),
   }),
   FREESWITCH_API_KEY: Joi.string().allow('').optional(),
+  // 撥號時組 callback_url 用（middleware 回呼通話結果），缺漏會導致接聽判定/重試機制失效
+  FREESWITCH_CALLBACK_BASE_URL: Joi.string().when('ENABLE_CALL_SCHEDULE', {
+    is: 'true',
+    then: Joi.when('TELEPHONE_EQUIPMENT', { is: 'FreeSwitch', then: Joi.required(), otherwise: Joi.allow('') }),
+    otherwise: Joi.allow(''),
+  }),
 
   // FIAS Middleware（Lakeshore Check-in/Check-out 用）：freeSwitchPmsApi.ts 以字串模板讀值，
   // 未設定會變成 "undefined" 字串送出，故選 FreeSwitch 設備時必須明確設定
@@ -105,7 +111,7 @@ const VAR_GROUPS: [string, string[]][] = [
   ['自動語音通知 Call Schedule → Yeastar', [
     'YEASTAR_API_HOST', 'YEASTAR_API_PATH', 'YEASTAR_USERNAME', 'YEASTAR_PASSWORD',
   ]],
-  ['自動語音通知 Call Schedule → FreeSwitch', ['FREESWITCH_API_URL', 'FREESWITCH_PMS_API_KEY', 'FREESWITCH_PMS_DOMAIN_NAME']],
+  ['自動語音通知 Call Schedule → FreeSwitch', ['FREESWITCH_API_URL', 'FREESWITCH_CALLBACK_BASE_URL', 'FREESWITCH_PMS_API_KEY', 'FREESWITCH_PMS_DOMAIN_NAME']],
   ['FIAS PMS 整合', ['FIAS_PMS_HOST', 'FIAS_PMS_PORT']],
 ];
 
