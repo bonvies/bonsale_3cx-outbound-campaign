@@ -4,6 +4,7 @@ import { getDatabase } from '@call-schedule/services/database';
 import { createCallSchedule, deleteCallSchedule } from '@/features/call-schedule/services/callService/callScheduleService';
 import { getSiteTimezone } from '@call-schedule/util/timezone';
 import { setFiasConn } from '@call-schedule/util/fiasConnectionStore';
+import { checkin, checkout, TollAllow } from '@call-schedule/services/api/freeSwitchPmsApi';
 
 /**
  * FIAS 協定沒有前端，PMS 送來的是飯店當地時間（TI/DT），
@@ -39,6 +40,51 @@ async function parseFiasDate(ti: string, dt?: string): Promise<Date> {
   }
 
   return fromZonedTime(new Date(year, month, day, hour, minute, 0), timezone);
+}
+
+/**
+ * GI/GO（住房異動）的設備閘門。
+ *
+ * 為什麼需要這個判斷：
+ * GI/GO 的下游動作是「更新分機的通話權限（toll_allow）與顯示名稱」，
+ * 這是透過 FusionPBX 主機上的 FIAS Middleware（freeSwitchPmsApi，port 5001）實現的，
+ * 屬於 FreeSwitch 架構專屬能力——NewRock / Yeastar 目前沒有對應的分機權限開關機制，
+ * 所以收到 GI/GO 時只 log 略過，不視為錯誤。
+ *
+ * GI/GO 本身是 FIAS 標準記錄類型（Oracle Hospitality spec），任何飯店的 PMS 都可能送，
+ * 不是煙波專屬；換新飯店時只要設備同為 FreeSwitch/FusionPBX（該主機需部署 cdr-webhook
+ * Middleware），調整 .env 即可直接沿用，程式碼不用改。
+ *
+ * TODO: 若未來 NewRock / Yeastar 也需要入住/退房連動（例如分機鎖定），
+ *       應比照 IPhoneApiService 的模式把 checkin/checkout 抽象成裝置介面，
+ *       屆時移除此閘門、改由各裝置實作決定行為。
+ */
+function isFreeSwitchEquipment(): boolean {
+  return process.env.TELEPHONE_EQUIPMENT === 'FreeSwitch';
+}
+
+// GI/GC 的 CS（Class of Service）欄位 → 我方 TollAllow 對照。
+// 見 Oracle Hospitality IFC8 FIAS Interface Specs「CS - Class of Service (COS)」章節：
+// FIAS CS 為單一數字字元（0-3），意義與我方 CS0-CS3 依序對應：
+//   0 Barred/hotel internal only → CS0（僅內線/緊急/免付費）
+//   1 Local                      → CS1（CS0 + 市內）
+//   2 National                   → CS2（CS1 + 國內＋行動）
+//   3 No restrictions            → CS3（全部允許，含國際）
+// GO（退房）規格裡沒有 CS 欄位（也沒有 GN），故不需要、也不能從 GO 訊息讀取
+const VALID_FIAS_CS_CODES = ['0', '1', '2', '3'];
+const DEFAULT_TOLL_ALLOW: TollAllow = 'CS2';
+
+/** 解析 GI/GC 訊息的 CS 欄位；缺漏或非標準值時退回預設，並記錄原因 */
+function resolveTollAllowFromFiasCs(cs: string | undefined, context: string): TollAllow {
+  if (cs === undefined || cs === '') {
+    console.log(`[FIAS] ${context} 未帶 CS 欄位，使用預設權限 ${DEFAULT_TOLL_ALLOW}`);
+    return DEFAULT_TOLL_ALLOW;
+  }
+  if (!VALID_FIAS_CS_CODES.includes(cs)) {
+    console.warn(`[FIAS] ${context} CS 欄位值無效："${cs}"（應為 0-3），使用預設權限 ${DEFAULT_TOLL_ALLOW}`);
+    return DEFAULT_TOLL_ALLOW;
+  }
+  return `CS${cs}` as TollAllow;
 }
 
 /**
@@ -132,6 +178,109 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       } catch (err) {
         console.error(`[FIAS] WD 處理失敗:`, err);
         conn.send(`WC|RN${roomNumber}|ST0`);
+      }
+      break;
+    }
+
+    // ── GI：客人入住（Guest In）──────────────
+    // PMS 推送入住通知 → 開通房間分機的通話權限、把顯示名稱改為房客姓名
+    case 'GI': {
+      const roomNumber = msg.fields.RN;
+      const guestName = msg.fields.GN; // 可能缺漏，缺漏時交給 Middleware 預設為 Room <分機>
+      const csCode = msg.fields.CS;    // Class of Service，見上方 resolveTollAllowFromFiasCs 說明
+
+      if (!roomNumber) {
+        console.warn('[FIAS] GI 缺少房號（RN），忽略此訊息');
+        break;
+      }
+
+
+      if (!isFreeSwitchEquipment()) {
+        console.log(`[FIAS] GI 收到入住通知（房間=${roomNumber}），但 TELEPHONE_EQUIPMENT 非 FreeSwitch，略過分機權限更新`);
+        break;
+      }
+
+      const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
+      const extension = extensionPrefix + roomNumber;
+      const tollAllow = resolveTollAllowFromFiasCs(csCode, `GI（房間=${roomNumber}）`);
+
+      // FIAS GI 不需回覆業務層 ACK，失敗只 log（不中斷 FIAS 連線）
+      const result = await checkin(extension, guestName ?? `Room ${extension}`, tollAllow);
+      if (result.success) {
+        console.log(`[FIAS] GI check-in 完成：房間=${roomNumber} 分機=${extension} 房客=${guestName ?? '(未提供)'} 權限=${tollAllow}`);
+      } else {
+        console.error(`[FIAS] GI check-in 失敗（房間=${roomNumber} 分機=${extension}）:`, result.error);
+      }
+      break;
+    }
+
+    // ── GO：客人退房（Guest Out）─────────────
+    // PMS 推送退房通知 → 收回房間分機的通話權限、顯示名稱還原為 Room <分機>
+    case 'GO': {
+      const roomNumber = msg.fields.RN;
+
+      if (!roomNumber) {
+        console.warn('[FIAS] GO 缺少房號（RN），忽略此訊息');
+        break;
+      }
+      if (!isFreeSwitchEquipment()) {
+        console.log(`[FIAS] GO 收到退房通知（房間=${roomNumber}），但 TELEPHONE_EQUIPMENT 非 FreeSwitch，略過分機權限更新`);
+        break;
+      }
+
+      const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
+      const extension = extensionPrefix + roomNumber;
+
+      const result = await checkout(extension);
+      if (result.success) {
+        console.log(`[FIAS] GO check-out 完成：房間=${roomNumber} 分機=${extension}`);
+      } else {
+        console.error(`[FIAS] GO check-out 失敗（房間=${roomNumber} 分機=${extension}）:`, result.error);
+      }
+      break;
+    }
+
+    // ── GC：住客資料異動 / 換房（Guest Change / Room Move）──
+    // 見 Oracle IFC8 FIAS Interface Specs「Guest Data Change notification」：
+    // RN = 目的房號（換房時的新房），RO = 來源房號（換房時的舊房，「支援換房流程的系統必填」）。
+    // 有 RO 才代表這是真的換房；沒有 RO 只是單純資料異動（例如改房客姓名），非本次範圍不處理。
+    case 'GC': {
+      const newRoomNumber = msg.fields.RN;
+      const oldRoomNumber = msg.fields.RO;
+      const guestName = msg.fields.GN;
+      const csCode = msg.fields.CS;
+
+      if (!oldRoomNumber) {
+        console.log(`[FIAS] GC 純資料異動（非換房，暫不處理）:`, JSON.stringify(msg.fields));
+        break;
+      }
+      if (!newRoomNumber) {
+        console.warn('[FIAS] GC 換房訊息缺少新房號（RN），忽略此訊息');
+        break;
+      }
+      if (!isFreeSwitchEquipment()) {
+        console.log(`[FIAS] GC 收到換房通知（${oldRoomNumber} → ${newRoomNumber}），但 TELEPHONE_EQUIPMENT 非 FreeSwitch，略過分機權限更新`);
+        break;
+      }
+
+      const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
+      const oldExtension = extensionPrefix + oldRoomNumber;
+      const newExtension = extensionPrefix + newRoomNumber;
+      const tollAllow = resolveTollAllowFromFiasCs(csCode, `GC 換房（${oldRoomNumber} → ${newRoomNumber}）`);
+
+      // 換房 = 舊房退房 + 新房入住，依序執行。先收回舊房權限再開新房，
+      // 避免退房前有一段時間新舊兩間房同時具備通話權限（例如舊房卡片還沒收回）。
+      // 舊房退房失敗仍繼續處理新房入住——客人已經實際搬過去，不該因此打不了電話。
+      const checkoutResult = await checkout(oldExtension);
+      if (!checkoutResult.success) {
+        console.error(`[FIAS] GC 換房：舊房退房失敗（房間=${oldRoomNumber} 分機=${oldExtension}）:`, checkoutResult.error);
+      }
+
+      const checkinResult = await checkin(newExtension, guestName ?? `Room ${newExtension}`, tollAllow);
+      if (checkinResult.success) {
+        console.log(`[FIAS] GC 換房完成：${oldRoomNumber}（分機=${oldExtension}）→ ${newRoomNumber}（分機=${newExtension}）房客=${guestName ?? '(未提供)'} 權限=${tollAllow}`);
+      } else {
+        console.error(`[FIAS] GC 換房：新房入住失敗（房間=${newRoomNumber} 分機=${newExtension}）:`, checkinResult.error);
       }
       break;
     }

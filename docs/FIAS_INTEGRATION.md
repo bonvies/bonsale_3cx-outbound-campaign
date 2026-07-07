@@ -146,6 +146,60 @@ PMS 通知系統取消指定房間的叫醒排程。
 
 ---
 
+### GI / GO — 客人入住 / 退房（Guest In / Guest Out）
+
+> 僅於 `TELEPHONE_EQUIPMENT=FreeSwitch` 時生效：收到後透過 FusionPBX 的 FIAS Middleware
+> （`FREESWITCH_PMS_API_URL`，見《FusionPBX / FreeSWITCH PMS-FIAS 整合說明書》）更新房間分機的
+> 通話權限與顯示名稱。其他設備收到時僅記錄後略過。
+
+**PMS → 系統（入住）**
+```
+\x02GI|RN<房間號碼>|GN<房客姓名>|CS<權限等級>\x03
+```
+
+**PMS → 系統（退房）**
+```
+\x02GO|RN<房間號碼>\x03
+```
+
+| 欄位 | 說明 | 必填 |
+|------|------|------|
+| `RN` | 房間號碼（套用 `FIAS_EXTENSION_PREFIX` 後轉為分機號） | ✅（缺漏則忽略該訊息）|
+| `GN` | 房客姓名（僅 GI；缺漏時分機顯示名稱預設為 `Room <分機>`）| ❌ |
+| `CS` | Class of Service，僅 GI（見下方對照表；缺漏或值不在 0-3 時預設 `CS2`）| ❌ |
+
+**CS（Class of Service）→ 我方 `toll_allow` 對照**（Oracle Hospitality IFC8 FIAS Interface Specs）：
+
+| FIAS CS | 意義 | 對應 `toll_allow` |
+|---------|------|-------------------|
+| 0 | Barred/hotel internal only | `CS0` |
+| 1 | Local | `CS1` |
+| 2 | National | `CS2` |
+| 3 | No restrictions | `CS3` |
+
+效果：
+- **GI**：分機 `toll_allow` 依 `CS` 欄位設定（缺漏預設 `CS2`：市內＋國內＋行動），顯示名稱改為房客姓名
+- **GO**：分機 `toll_allow` 收回為 `CS0`（僅內線/緊急/免付費），顯示名稱還原為 `Room <分機>`；規格上 GO 本來就不帶 `CS`/`GN`（Oracle 規格明訂退房記錄不傳送房客身分資訊）
+
+GI/GO 為 PMS 單向通知，本系統不回覆業務層 ACK；Middleware 呼叫失敗僅記錄 log，不中斷 FIAS 連線。
+
+### GC — 住客資料異動 / 換房（Guest Change / Room Move）
+
+```
+\x02GC|RN<新房號>|RO<舊房號>|GN<房客姓名>|CS<權限等級>\x03
+```
+
+| 欄位 | 說明 | 必填 |
+|------|------|------|
+| `RN` | 目的房號（換房後的新房） | ✅ |
+| `RO` | 來源房號（換房前的舊房）。**有此欄位才視為換房**，缺漏時視為單純資料異動（例如僅改房客姓名），暫不處理 | 換房時必填 |
+| `GN` | 新房房客姓名 | ❌ |
+| `CS` | Class of Service，對照表同 GI | ❌ |
+
+換房效果：舊房（`RO`）依 GO 邏輯退房 → 新房（`RN`）依 GI 邏輯入住，依序執行；舊房退房失敗不阻擋新房入住（客人已實際搬過去，不應因此打不了電話）。
+
+---
+
 ### RE — 房務狀態通知（Room Equipment / Room Status）
 
 > 依 Oracle Hospitality FIAS Interface Specs（IFC8, 2.20.23）Appendix B 訂正；`RE`/`RS` 為官方定義的正式記錄類型，非我方自訂。
