@@ -4,6 +4,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { getDatabase } from '../database';
 import { phoneApiService } from './phoneApiService';
 import { registerCall, cancelScheduleJobs } from './callMonitorService';
+import { notifyCallResult } from './monitor/callResultNotifier';
 import { getSiteTimezone } from '@call-schedule/util/timezone';
 
 // ─────────────────────────────────────────────
@@ -109,6 +110,7 @@ function scheduleCallJob(
       if (!result.success) {
         console.error(`[CallScheduleService] Call failed for ${id}:`, result.error);
         db.prepare(`UPDATE call_schedules SET callStatus = 'ERROR' WHERE id = ?`).run(id);
+        notifyCallResult({ scheduleId: id, extension, finalStatus: 'ERROR' });
         return;
       }
       db.prepare(`UPDATE call_schedules SET callStatus = 'CALLING' WHERE id = ?`).run(id);
@@ -116,6 +118,7 @@ function scheduleCallJob(
     } catch (err) {
       console.error(`[CallScheduleService] Job execution failed for ${id}:`, err);
       db.prepare(`UPDATE call_schedules SET callStatus = 'ERROR' WHERE id = ?`).run(id);
+      notifyCallResult({ scheduleId: id, extension, finalStatus: 'ERROR' });
     }
   });
 }
@@ -241,6 +244,7 @@ export async function triggerImmediateCall(params: TriggerImmediateCallParams): 
   if (!result.success) {
     console.error(`[CallScheduleService] triggerImmediateCall failed for ${newId}:`, result.error);
     db.prepare(`UPDATE call_schedules SET callStatus = 'ERROR' WHERE id = ?`).run(newId);
+    notifyCallResult({ scheduleId: newId, extension, finalStatus: 'ERROR' });
     return newId;
   }
 
