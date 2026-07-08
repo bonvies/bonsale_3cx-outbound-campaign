@@ -214,6 +214,24 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       break;
     }
 
+    // ── PA：電話計費回覆（Posting Answer）─────────
+    // 規格上 PA 是我方送出 PS（電話計費）後的終點回應，不需要、也不應該再回覆
+    // 任何東西給 PMS。這裡只做記錄：AS 非 OK 時特別印出警告，因為目前系統沒有
+    // 任何地方在追蹤「這筆計費有沒有真的入帳成功」，入帳失敗只有靠這行 log 才
+    // 看得出來，不然房客這通電話的費用會無聲消失、事後對不上帳。
+    case 'PA': {
+      const roomNumber = msg.fields.RN ?? '(無房號)';
+      const answerStatus = msg.fields.AS;
+      const postingSeq = msg.fields['P#'] || '(無)';
+
+      if (answerStatus === 'OK') {
+        console.log(`[FIAS] PA 入帳成功：房間=${roomNumber} P#=${postingSeq}`);
+      } else {
+        console.error(`[FIAS] PA 入帳失敗：房間=${roomNumber} AS=${answerStatus ?? '(缺漏)'} P#=${postingSeq}，需人工確認電話費用是否漏記`);
+      }
+      break;
+    }
+
     // ── GI：客人入住（Guest In）──────────────
     // PMS 推送入住通知 → 開通房間分機的通話權限、把顯示名稱改為房客姓名
     case 'GI': {
