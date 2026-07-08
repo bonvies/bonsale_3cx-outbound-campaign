@@ -407,7 +407,7 @@ async function setupCallSchedule(): Promise<void> {
     { createServer: createFiasServer },
     { connectToPms },
     { setFiasConn },
-    { LakeshoreCallResultHandler },
+    { FiasWakeupResultHandler },
     { registerCallResultHandler },
   ] = await Promise.all([
     import('./features/call-schedule/routes/callSchedule'),
@@ -420,7 +420,7 @@ async function setupCallSchedule(): Promise<void> {
     import('./features/call-schedule/util/fias'),
     import('./features/call-schedule/util/fiasClient'),
     import('./features/call-schedule/util/fiasConnectionStore'),
-    import('./features/call-schedule/components/lakeshoreCallResultHandler'),
+    import('./features/call-schedule/components/fiasWakeupResultHandler'),
     import('./features/call-schedule/services/callService/monitor/callResultNotifier'),
   ]);
 
@@ -452,10 +452,6 @@ async function setupCallSchedule(): Promise<void> {
     console.error('❌ [CallSchedule] 通話監控啟動失敗:', error);
   }
 
-  // ── 通話結果 Handler 註冊 ─────────────────────────────────────────────────
-  // 新增飯店：實作 ICallResultHandler（參考 lakeshoreCallResultHandler.ts），在這裡 register 即可
-  registerCallResultHandler(new LakeshoreCallResultHandler());
-
   // ── FIAS TCP ──────────────────────────────────────────────────────────────
   // ENABLE_FIAS=false → 跳過，不佔用 TCP port（適合 Cloud Run 等單 port 環境）
   // FIAS_MODE=server（預設）：開 TCP server，等 PMS 連入
@@ -463,6 +459,11 @@ async function setupCallSchedule(): Promise<void> {
   if (!ENABLE_FIAS) {
     console.log('📡 FIAS 已停用（ENABLE_FIAS=false），跳過 TCP 初始化');
   } else {
+    // FiasWakeupResultHandler 是協定層級的邏輯（依 FIAS 規格回報 WA），只要有啟用
+    // FIAS 就該註冊，不分客戶。若某飯店需要額外的客製化通知（非 FIAS 規格要求），
+    // 在這裡另外 registerCallResultHandler(new 該飯店Handler()) 即可，兩者互不影響。
+    registerCallResultHandler(new FiasWakeupResultHandler());
+
     const FIAS_MODE = process.env.FIAS_MODE ?? 'server';
 
     if (FIAS_MODE === 'client') {

@@ -11,17 +11,22 @@ const FINAL_STATUS_TO_AS: Record<CallFinalStatus, string> = {
   ERROR: 'UR',
 };
 
-export class LakeshoreCallResultHandler implements ICallResultHandler {
+// 這是「協定層級」的 handler，不是「客戶層級」的——任何用 FIAS PMS（Protel/Opera/
+// Fidelio...）的飯店都需要同一套 WA 回報邏輯，不因換客戶而不同，所以只在 app.ts
+// 依 ENABLE_FIAS 註冊，不是「新增飯店就複製一份」。若某飯店需要真正客製化的通知方式
+// （例如結果要另外 POST 到該飯店自己的系統），才在旁邊新增一個 ICallResultHandler
+// （例如 lakeshoreCustomNotifyHandler.ts），跟這個各自獨立註冊，互不影響。
+export class FiasWakeupResultHandler implements ICallResultHandler {
   async handle(payload: CallResultPayload): Promise<void> {
     const conn = getFiasConn();
     if (!conn) {
-      console.warn('[Lakeshore] FIAS conn 不存在，無法回傳通話結果');
+      console.warn('[FiasWakeupResult] FIAS conn 不存在，無法回傳通話結果');
       return;
     }
 
     const record = await getCallScheduleById(payload.scheduleId);
     if (!record) {
-      console.warn(`[Lakeshore] 找不到 call_schedule 記錄（id=${payload.scheduleId}），無法回傳 WA`);
+      console.warn(`[FiasWakeupResult] 找不到 call_schedule 記錄（id=${payload.scheduleId}），無法回傳 WA`);
       return;
     }
 
@@ -43,6 +48,6 @@ export class LakeshoreCallResultHandler implements ICallResultHandler {
 
     // WA 為標準 FIAS 叫醒結果記錄；規格規定同一次叫醒只能送一筆最終結果，不可送中間結果
     conn.send(`WA|RN${roomNum}|DA${da}|TI${ti}|AS${answerStatus}|`);
-    console.log(`[Lakeshore] FIAS WA 已送出：房間=${roomNum} 時間=${da} ${ti} status=${payload.finalStatus}(AS${answerStatus})`);
+    console.log(`[FiasWakeupResult] FIAS WA 已送出：房間=${roomNum} 時間=${da} ${ti} status=${payload.finalStatus}(AS${answerStatus})`);
   }
 }

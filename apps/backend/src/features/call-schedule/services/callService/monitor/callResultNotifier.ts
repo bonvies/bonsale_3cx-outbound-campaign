@@ -1,6 +1,12 @@
 
 // Handler 在 app.ts setupCallSchedule() 中透過 registerCallResultHandler() 註冊。
-// 新增飯店通知：實作 ICallResultHandler，在 app.ts 同處 register 即可。
+// 新增通知邏輯：實作 ICallResultHandler，在 app.ts 同處 register 即可，但要先想清楚
+// 這個 handler 是「協定/設備層級」還是「客戶層級」：
+//   - 協定層級（例如依 FIAS 規格回報 WA，見 fiasWakeupResultHandler.ts）：
+//     只要有啟用該協定/設備就該註冊，不分客戶，改一次全部生效
+//   - 客戶層級（例如某飯店要求結果額外 POST 到他們自己的系統）：
+//     才需要每家客戶各寫一個 handler
+// 不要把協定層級的邏輯誤放進「每家客戶各一份」的框架裡，之後會變成到處複製貼上。
 
 // ─────────────────────────────────────────────
 // Types
@@ -32,9 +38,6 @@ export type CallResultPayload = {
  *   }
  * }
  * ```
- *
- * // TODO: 未來可在此介面加入 `clientId` 或 `priority` 等屬性，
- * //       方便 notifyCallResult 做條件分流（e.g. 只通知特定客戶的 handler）
  */
 export interface ICallResultHandler {
   handle(payload: CallResultPayload): void | Promise<void>;
@@ -47,19 +50,17 @@ export interface ICallResultHandler {
 /**
  * 已註冊的 handler 列表。
  * 每次呼叫 notifyCallResult 時會依序執行所有 handler（互不影響）。
- *
- * // TODO: 若需要「移除特定 handler」的功能，改用 Map<string, ICallResultHandler>
- * //       並讓 registerCallResultHandler 回傳一個 unregister function
  */
 const _handlers: ICallResultHandler[] = [];
 
 /**
- * 註冊一個通話結果 handler。
- * 通常在 app 啟動時呼叫，每家客戶各自 register 一次。
+ * 註冊一個通話結果 handler，在 app 啟動時呼叫。
+ * 協定/設備層級的 handler 依能力旗標（如 ENABLE_FIAS）註冊；
+ * 客戶層級的 handler 才需要每家客戶各自 register 一次。
  *
  * @example
- * registerCallResultHandler(new LakeshoreHotelHandler())
- * registerCallResultHandler(new InternalLogHandler())
+ * registerCallResultHandler(new FiasWakeupResultHandler())  // 協定層級
+ * registerCallResultHandler(new LakeshoreHotelHandler())    // 客戶層級（假設範例）
  */
 export function registerCallResultHandler(handler: ICallResultHandler): void {
   _handlers.push(handler);
@@ -72,12 +73,6 @@ export function registerCallResultHandler(handler: ICallResultHandler): void {
 /**
  * 通話達到最終狀態時，由 callMonitorCore 呼叫此函式。
  * 會依序執行所有已註冊的 handler，單一 handler 失敗不影響其他 handler。
- *
- * // TODO: 目前為同步逐一執行；若 handler 數量多且各自有網路請求，
- * //       可改為 Promise.allSettled 並行執行以減少總等待時間
- *
- * // TODO: 若需要失敗重試（e.g. POST webhook 失敗要 retry），
- * //       在各自的 handler 內部實作，或抽一個 withRetry wrapper
  */
 export function notifyCallResult(payload: CallResultPayload): void {
   for (const handler of _handlers) {
