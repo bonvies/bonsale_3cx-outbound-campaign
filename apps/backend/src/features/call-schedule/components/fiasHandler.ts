@@ -1,7 +1,7 @@
 import { fromZonedTime } from 'date-fns-tz';
 import { FiasConn, FiasMessage } from '@call-schedule/types/fias/fiasTypes';
 import { getDatabase } from '@call-schedule/services/database';
-import { createCallSchedule, deleteCallSchedule } from '@/features/call-schedule/services/callService/callScheduleService';
+import { createCallSchedule, deleteCallSchedule, triggerImmediateCall } from '@/features/call-schedule/services/callService/callScheduleService';
 import { getSiteTimezone } from '@call-schedule/util/timezone';
 import { setFiasConn } from '@call-schedule/util/fiasConnectionStore';
 import { sendLinkHandshake, sendLinkEnd, sendLinkAlive } from '@call-schedule/util/fiasLinkProtocol';
@@ -135,8 +135,8 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       const roomNumber = msg.fields.RN;
       const timeStr = msg.fields.TI;  // HHMM
       const dateStr = msg.fields.DT ?? msg.fields.DA;  // YYMMDD（可選）
-      const retryIntervalMin = msg.fields.RI ?? '5';
-      const maxRetries = msg.fields.MR ?? '3';
+      const retryIntervalMin = msg.fields.RI ?? '1';
+      const maxRetries = msg.fields.MR ?? '1';
 
       const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
       const extension = extensionPrefix + roomNumber;
@@ -144,18 +144,39 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       try {
         const jobDate = await parseFiasDate(timeStr, dateStr);
 
-        const newId = createCallSchedule({
-          audioFile: '',
-          date: jobDate.toISOString(),
-          extension,
-          notificationContent: `叫醒服務 - 房間 ${roomNumber}`,
-          retryInterval: retryIntervalMin,
-          maxRetries,
-          notes: `FIAS WR - 房間 ${roomNumber}`,
-          roomNum: roomNumber,
-        });
+        // 規格：「PMS can be set to send wakeup requests in advance or right at
+        // wakeup time」——若 Protel 是到點才送 WR，jobDate 經過處理延遲後可能已經
+        // 等於或早於現在。createCallSchedule 遇到這種情況會直接 throw（date must be
+        // in the future），叫醒電話會完全打不出去。這裡預留 1 分鐘緩衝，落在緩衝內
+        // 的一律視為「該立刻撥打」，改用 triggerImmediateCall 直接撥出。
+        const isDue = jobDate.getTime() <= Date.now() + 60_000;
 
-        console.log(`[FIAS] WR 預約叫醒：房間=${roomNumber} 分機=${extension} 時間=${jobDate.toISOString()} retryInterval=${retryIntervalMin}min maxRetries=${maxRetries} id=${newId}`);
+        const newId = isDue
+          ? await triggerImmediateCall({
+            audioFile: '',
+            extension,
+            notificationContent: `叫醒服務 - 房間 ${roomNumber}`,
+            retryInterval: retryIntervalMin,
+            maxRetries,
+            notes: `FIAS WR - 房間 ${roomNumber}`,
+            roomNum: roomNumber,
+          })
+          : createCallSchedule({
+            audioFile: '',
+            date: jobDate.toISOString(),
+            extension,
+            notificationContent: `叫醒服務 - 房間 ${roomNumber}`,
+            retryInterval: retryIntervalMin,
+            maxRetries,
+            notes: `FIAS WR - 房間 ${roomNumber}`,
+            roomNum: roomNumber,
+          });
+
+        if (isDue) {
+          console.log(`[FIAS] WR 撥打時間已到或在 1 分鐘緩衝內，改為立即撥打：房間=${roomNumber} 分機=${extension} 時間=${jobDate.toISOString()} retryInterval=${retryIntervalMin}min maxRetries=${maxRetries} id=${newId}`);
+        } else {
+          console.log(`[FIAS] WR 排程：房間=${roomNumber} 分機=${extension} 時間=${jobDate.toISOString()} retryInterval=${retryIntervalMin}min maxRetries=${maxRetries} id=${newId}`);
+        }
         conn.send(`WC|RN${roomNumber}|ST1`);
       } catch (err) {
         console.error(`[FIAS] WR 處理失敗:`, err);
