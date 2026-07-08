@@ -4,6 +4,7 @@ import { getDatabase } from '@call-schedule/services/database';
 import { createCallSchedule, deleteCallSchedule } from '@/features/call-schedule/services/callService/callScheduleService';
 import { getSiteTimezone } from '@call-schedule/util/timezone';
 import { setFiasConn } from '@call-schedule/util/fiasConnectionStore';
+import { sendLinkHandshake, sendLinkEnd, sendLinkAlive } from '@call-schedule/util/fiasLinkProtocol';
 import { checkin, checkout, update, TollAllow } from '@call-schedule/services/api/freeSwitchPmsApi';
 
 /**
@@ -107,18 +108,22 @@ function findScheduleId(extension: string, dateIso: string): string | null {
 export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Promise<void> {
   switch (msg.type) {
 
+    // 收到 PMS 的 LS：依規格必須回送完整 LD/LR/LA 握手序列（不能只回 LS），
+    // PMS 才會脫離未定義狀態、開始真正處理資料記錄。與 fiasClient.ts（client 模式）
+    // 共用同一套規則，見 fiasLinkProtocol.ts。
     case 'LS': {
       setFiasConn(conn);
-      console.log('[FIAS] 執行握手程序...');
-      const now = new Date();
-      const da = now.toISOString().slice(2, 10).replace(/-/g, ''); // YYMMDD
-      const ti = now.toISOString().slice(11, 19).replace(/:/g, ''); // HHMMSS
-      conn.send(`LS|DA${da}|TI${ti}`);
+      sendLinkHandshake(conn);
       break;
     }
 
+    // 收到 PMS 的 LE（介面即將關閉）：依規格回送 LE 確認，與 fiasClient.ts 共用同一套規則
+    case 'LE':
+      sendLinkEnd(conn);
+      break;
+
     case 'LA':
-      conn.send('LA');
+      sendLinkAlive(conn);
       break;
 
     // ── WR：叫醒預約 ──────────────────────────
