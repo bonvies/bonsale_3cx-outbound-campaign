@@ -98,6 +98,13 @@ function sendLinkHandshake(conn: FiasConn): void {
   console.log('[FiasClient] LD/LR/LA 已送出，連線應已進入 LinkAlive 狀態');
 }
 
+function buildLeMessage(): string {
+  const now = new Date();
+  const da = now.toISOString().slice(2, 10).replace(/-/g, '');
+  const ti = now.toISOString().slice(11, 19).replace(/:/g, '');
+  return `LE|DA${da}|TI${ti}|`;
+}
+
 /**
  * 以 TCP client 身份主動連線至 PMS（PMS SERVER 模式）。
  *
@@ -178,6 +185,14 @@ export function connectToPms(
         // 收到 PMS 的 LS：不轉交 handler（避免循環回送），改送 LD/LR/LA 握手序列
         if (msg.type === 'LS') {
           sendLinkHandshake(conn!);
+          continue;
+        }
+
+        // 收到 PMS 的 LE（PMS 介面即將關閉）：依規格「External system to reply with LE」
+        // 回送一筆 LE 確認，不轉交 handler。之後 socket 的 close 事件會觸發既有重連邏輯。
+        if (msg.type === 'LE') {
+          console.log('[FiasClient] 收到 PMS LE，回送 LE 確認連線結束');
+          conn!.send(buildLeMessage());
           continue;
         }
 
