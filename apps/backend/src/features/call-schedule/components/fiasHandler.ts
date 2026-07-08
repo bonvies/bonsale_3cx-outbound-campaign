@@ -127,10 +127,14 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       break;
 
     // ── WR：叫醒預約 ──────────────────────────
+    // 官方規格日期欄位是 DA（見 fiasLinkProtocol.ts LINK_RECORDS 說明），但
+    // docs/FIAS_INTEGRATION.md 過去記錄的是 DT，兩者都沒實測驗證過，此處
+    // DT 優先、缺漏時退回 DA，兩種都不漏接。RI/MR（重試間隔/次數）非官方欄位，
+    // 缺漏時套用我方預設值（5 分鐘／3 次）。
     case 'WR': {
       const roomNumber = msg.fields.RN;
       const timeStr = msg.fields.TI;  // HHMM
-      const dateStr = msg.fields.DT;  // YYMMDD（可選）
+      const dateStr = msg.fields.DT ?? msg.fields.DA;  // YYMMDD（可選）
       const retryIntervalMin = msg.fields.RI ?? '5';
       const maxRetries = msg.fields.MR ?? '3';
 
@@ -148,6 +152,7 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
           retryInterval: retryIntervalMin,
           maxRetries,
           notes: `FIAS WR - 房間 ${roomNumber}`,
+          roomNum: roomNumber,
         });
 
         console.log(`[FIAS] WR 預約叫醒：房間=${roomNumber} 分機=${extension} 時間=${jobDate.toISOString()} retryInterval=${retryIntervalMin}min maxRetries=${maxRetries} id=${newId}`);
@@ -159,11 +164,12 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       break;
     }
 
-    // ── WD：取消叫醒 ──────────────────────────
-    case 'WD': {
+    // ── WC：取消叫醒（Wakeup Clear）──────────────
+    // 日期欄位同 WR，DT 優先、缺漏時退回官方的 DA。
+    case 'WC': {
       const roomNumber = msg.fields.RN;
       const timeStr = msg.fields.TI;
-      const dateStr = msg.fields.DT;
+      const dateStr = msg.fields.DT ?? msg.fields.DA;
 
       const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
       const extension = extensionPrefix + roomNumber;
@@ -174,14 +180,14 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
 
         if (scheduleId) {
           deleteCallSchedule(scheduleId);
-          console.log(`[FIAS] WD 取消叫醒：房間=${roomNumber} 分機=${extension} scheduleId=${scheduleId}`);
+          console.log(`[FIAS] WC 取消叫醒：房間=${roomNumber} 分機=${extension} scheduleId=${scheduleId}`);
         } else {
-          console.warn(`[FIAS] WD 找不到對應排程：房間=${roomNumber} 分機=${extension} 時間=${jobDate.toISOString()}`);
+          console.warn(`[FIAS] WC 找不到對應排程：房間=${roomNumber} 分機=${extension} 時間=${jobDate.toISOString()}`);
         }
 
         conn.send(`WC|RN${roomNumber}|ST1`);
       } catch (err) {
-        console.error(`[FIAS] WD 處理失敗:`, err);
+        console.error(`[FIAS] WC 處理失敗:`, err);
         conn.send(`WC|RN${roomNumber}|ST0`);
       }
       break;
