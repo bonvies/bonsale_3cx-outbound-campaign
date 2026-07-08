@@ -233,20 +233,14 @@ FIAS 規格中的 `<ACK>/<NAK>` 僅為序列傳輸層級的位元組完整性確
 
 > ⚠️ 規格明確指出：**無法透過外部系統把房間狀態設為 Out-of-Order/Out-of-Service**，此狀態只能在 PMS 本身操作。
 
-**煙波 roomstatus → FIAS RS 對照表（我方暫定，待實測調整，見 `routes/lakeshore.ts`）**
+**煙波 roomstatus 直接當 FIAS RS 送出，不做轉換**
 
-煙波的 `roomstatus` 沒有回報房間是否有客人入住，故一律假設 Vacant；且部分代碼無明確對應，為暫定值：
+原本嘗試依 Oracle 官方 Appendix B 的 1-6 代碼做轉換對照，但實測發現跟這台 Protel
+實際設定不符（例如送 `RS5` 結果 Protel 顯示「清潔中」而非官方定義的「已檢查」）。
+規格本身也註明「Further values may be possible depending on the Hotels PMS setup」，
+代碼意義由各 PMS 安裝自行決定，與其猜測對照表，改為煙波的 `roomstatus` 是多少就直接送多少。
 
-| 煙波 roomstatus | 說明 | 對應 FIAS RS |
-|------|------|------|
-| 0 | cleaned | 3 Clean/Vacant |
-| 1 | dirty | 1 Dirty/Vacant |
-| 2 | out of service | 2（規格禁止，僅送出觀察 Protel 實際反應） |
-| 4 | touched | 2 Dirty/Occupied |
-| 5 | cleaning in progress | 1 Dirty/Vacant |
-| 6 | checked | 5 Inspected/Vacant |
-
-**範例：101 房狀態變更為 dirty（煙波 roomstatus=1 → FIAS RS=1）**
+**範例：101 房狀態變更為煙波 roomstatus=1**
 ```
 \x02RE|RN101|RS1\x03
 ```

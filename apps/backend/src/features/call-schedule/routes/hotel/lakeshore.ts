@@ -16,23 +16,11 @@ const STATUSTIME_MAX_AGE_MS = 10 * 60 * 1000;
 const VALID_TOLL_ALLOWS: TollAllow[] = ['CS0', 'CS1', 'CS2', 'CS3'];
 const DEFAULT_TOLL_ALLOW: TollAllow = 'CS2';
 
-// 煙波 roomstatus → FIAS 標準 RS（Room Maid Status，見 Oracle FIAS spec Appendix B）
-// FIAS RS 代碼：1=Dirty/Vacant 2=Dirty/Occupied 3=Clean/Vacant 4=Clean/Occupied 5=Inspected/Vacant 6=Inspected/Occupied
-// 煙波沒有回報房間是否有客人入住，以下一律假設 Vacant，且無法一一對應，為我方暫定，待實測後調整：
-//   0 cleaned              → 3 Clean/Vacant
-//   1 dirty                → 1 Dirty/Vacant
-//   2 out of service        → FIAS 規格明確表示無法由外部系統設定此狀態（只能在 PMS 本身操作），先送 2 觀察 Protel 實際反應
-//   4 touched              → 2 Dirty/Occupied（假設「已被使用」）
-//   5 cleaning in progress → 1 Dirty/Vacant（尚未清潔完成）
-//   6 checked              → 5 Inspected/Vacant
-const ROOM_STATUS_TO_FIAS_RS: Record<string, string> = {
-  '0': '3',
-  '1': '1',
-  '2': '2',
-  '4': '2',
-  '5': '1',
-  '6': '5',
-};
+// 煙波 roomstatus 直接當 FIAS RS 送出，不做轉換：實測發現 Oracle 官方 Appendix B
+// 的 RS 代碼（1=Dirty/Vacant...6=Inspected/Occupied）跟這台 Protel 實際設定不符
+//（例如送 RS5 結果 Protel 顯示「清潔中」而非官方定義的「已檢查」），規格本身也
+// 註明「Further values may be possible depending on the Hotels PMS setup」，
+// 與其猜測對照表，不如直接照煙波原始代碼送出，由飯店那邊自行決定代碼意義。
 
 const RETCODE_MSG: Record<string, string> = {
   '000': '成功',
@@ -126,10 +114,7 @@ router.post('/room/status', async (req: Request, res: Response) => {
     // 轉發給 Protel（FIAS TCP，RE/RS 記錄，fire-and-forget：暫不等待 PMS 回應結果，見 docs/FIAS_INTEGRATION.md）
     const conn = getFiasConn();
     if (conn) {
-      const fiasRs = ROOM_STATUS_TO_FIAS_RS[String(roomstatus)];
-      if (String(roomstatus) === '2') {
-        console.warn(`[Lakeshore] roomstatus=2 (out of service) 依 FIAS 規格無法由外部系統設定，仍嘗試送出以觀察 Protel 實際反應（房間=${roomno}）`);
-      }
+      const fiasRs = String(roomstatus);
       conn.send(`RE|RN${roomno}|RS${fiasRs}|`);
       console.log(`RE|RN${roomno}|RS${fiasRs}|`);
       console.log(`[Lakeshore] 房況已轉發給 Protel：房間=${roomno} 煙波狀態=${roomstatus} → FIAS RS=${fiasRs}`);
