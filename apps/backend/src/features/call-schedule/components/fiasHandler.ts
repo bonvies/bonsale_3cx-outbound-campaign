@@ -188,12 +188,13 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
     }
 
     // ── WC：取消叫醒（Wakeup Clear）──────────────
-    // 日期欄位同 WR，DT 優先、缺漏時退回官方的 DA。規格明訂 WC 不需要回應
-    // （理由同上方 WR 的說明），這裡只處理刪除、不回送任何記錄。
+    // 日期欄位同 WR，DT 優先、缺漏時退回官方的 DA（DT 可能是存在但空字串，
+    // trim() + || 才能正確 fallback，?? 只在 null/undefined 時生效）。規格明訂
+    // WC 不需要回應（理由同上方 WR 的說明），這裡只處理刪除、不回送任何記錄。
     case 'WC': {
       const roomNumber = msg.fields.RN;
       const timeStr = msg.fields.TI;
-      const dateStr = msg.fields.DT ?? msg.fields.DA;
+      const dateStr = msg.fields.DT?.trim() || msg.fields.DA;
 
       const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
       const extension = extensionPrefix + roomNumber;
