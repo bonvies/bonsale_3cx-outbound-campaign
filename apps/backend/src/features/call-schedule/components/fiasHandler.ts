@@ -134,9 +134,9 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
     case 'WR': {
       const roomNumber = msg.fields.RN;
       const timeStr = msg.fields.TI;  // HHMM
-      const dateStr = msg.fields.DT ?? msg.fields.DA;  // YYMMDD（可選）
-      const retryIntervalMin = msg.fields.RI ?? '1';
-      const maxRetries = msg.fields.MR ?? '0';
+      const dateStr = msg.fields.DT?.trim() || msg.fields.DA;  // YYMMDD（可選）
+      const retryIntervalMin = msg.fields.RI?.trim() || '1';
+      const maxRetries = msg.fields.MR?.trim() || '0';
 
       const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
       const extension = extensionPrefix + roomNumber;

@@ -14,7 +14,6 @@ type PendingCall = {
   retryCount: number;
   maxRetries: number;
   retryIntervalMs: number;
-  answered: boolean;
 };
 
 export type RegisterCallOptions = {
@@ -30,8 +29,31 @@ export type RegisterCallOptions = {
 // State
 // ─────────────────────────────────────────────
 
-// key = extension（被叫分機號碼）
-const pendingCalls = new Map<string, PendingCall>();
+// key = extension（被叫分機號碼），value = 該分機目前在飛行中的通話佇列（FIFO）。
+// 用陣列而非單一物件是因為同分機可能同時有多通電話在監控中（例如同房間短時間內
+// 收到多筆 WR，或重試撞上下一筆排程）——RING/ANSWER/BYE 事件只帶分機號碼，無法
+// 精確對應是哪一通，因此以「先登記的先處理」為前提，用佇列先進先出比對，避免用
+// 單一 Map entry 導致後面登記的覆蓋前面的、讓前一通的事件被吃掉（見
+// docs/FIAS_LAKESHORE_TEST_LOG.md 同分機重疊測試的紀錄）。
+const pendingCalls = new Map<string, PendingCall[]>();
+
+function peekCall(ext: string): PendingCall | undefined {
+  return pendingCalls.get(ext)?.[0];
+}
+
+function dequeueCall(ext: string): PendingCall | undefined {
+  const queue = pendingCalls.get(ext);
+  if (!queue || queue.length === 0) return undefined;
+  const call = queue.shift();
+  if (queue.length === 0) pendingCalls.delete(ext);
+  return call;
+}
+
+function enqueueCall(call: PendingCall): void {
+  const queue = pendingCalls.get(call.extension) ?? [];
+  queue.push(call);
+  pendingCalls.set(call.extension, queue);
+}
 
 // ─────────────────────────────────────────────
 // DB helper
@@ -65,31 +87,29 @@ function updateStatus(scheduleId: string, status: string, callRecord?: string, r
 // ─────────────────────────────────────────────
 
 export function handleRing(ext: string): void {
-  const call = pendingCalls.get(ext);
+  const call = peekCall(ext);
   if (!call) return;
   console.log(`[CallMonitor] 🔔 RING  ext=${ext} scheduleId=${call.scheduleId}`);
   updateStatus(call.scheduleId, 'RINGING');
 }
 
 export function handleAnswer(ext: string): void {
-  const call = pendingCalls.get(ext);
+  const call = dequeueCall(ext);
   if (!call) return;
   console.log(`[CallMonitor] 📞 ANSWER ext=${ext} scheduleId=${call.scheduleId}`);
-  call.answered = true;
   updateStatus(call.scheduleId, 'ANSWERED', new Date().toISOString());
-  pendingCalls.delete(ext);
   notifyCallResult({ scheduleId: call.scheduleId, extension: ext, finalStatus: 'ANSWERED', callRecord: new Date().toISOString() });
 }
 
-export async function handleBye(ext: string): Promise<void> {
-  const call = pendingCalls.get(ext);
-  if (!call) return;
+// 我方主動掛斷、通話正常結束的清理（不進重試邏輯），供設備 service 在偵測到
+// 「我方掛斷」事件時呼叫（例如 NewRock 的 BYE attribute）。
+export function clearPendingCall(ext: string): void {
+  dequeueCall(ext);
+}
 
-  if (call.answered) {
-    console.log(`[CallMonitor] 🔹 BYE ext=${ext} scheduleId=${call.scheduleId}（已接聽後掛斷）`);
-    pendingCalls.delete(ext);
-    return;
-  }
+export async function handleBye(ext: string): Promise<void> {
+  const call = dequeueCall(ext);
+  if (!call) return;
 
   console.log(
     `[CallMonitor] ☎️ BYE (未接聽) ext=${ext} scheduleId=${call.scheduleId} retryCount=${call.retryCount}/${call.maxRetries}`
@@ -100,7 +120,6 @@ export async function handleBye(ext: string): Promise<void> {
   if (nextRetryCount > call.maxRetries) {
     console.log(`[CallMonitor] 已達最大重試次數 (${call.maxRetries})，標記為未接聽`);
     updateStatus(call.scheduleId, 'NO_ANSWER', new Date().toISOString());
-    pendingCalls.delete(ext);
     notifyCallResult({ scheduleId: call.scheduleId, extension: ext, finalStatus: 'NO_ANSWER', retryCount: `${call.retryCount}/${call.maxRetries}` });
     return;
   }
@@ -110,7 +129,6 @@ export async function handleBye(ext: string): Promise<void> {
     `[CallMonitor] 安排第 ${nextRetryCount}/${call.maxRetries} 次重試，時間: ${retryAt.toISOString()}`
   );
   updateStatus(call.scheduleId, 'WAITING_RETRY', new Date().toISOString(), nextRetryCount);
-  pendingCalls.delete(ext);
 
   schedule.scheduleJob(
     `retry_${call.scheduleId}_${nextRetryCount}`,
@@ -151,9 +169,7 @@ export async function handleBye(ext: string): Promise<void> {
 
 export function registerCall(opts: RegisterCallOptions): void {
   const { scheduleId, extension, from, retryCount = 0, maxRetries, retryIntervalMs } = opts;
-  pendingCalls.set(extension, {
-    scheduleId, extension, from, retryCount, maxRetries, retryIntervalMs, answered: false,
-  });
+  enqueueCall({ scheduleId, extension, from, retryCount, maxRetries, retryIntervalMs });
   console.log(
     `✍️ [CallMonitor] 已登記監控 scheduleId=${scheduleId} ext=${extension} from=${from} retry=${retryCount}/${maxRetries} retryIntervalMs=${retryIntervalMs}`
   );
@@ -176,6 +192,6 @@ export function cancelScheduleJobs(
   });
 }
 
-export function getPendingCalls(): Map<string, PendingCall> {
+export function getPendingCalls(): Map<string, PendingCall[]> {
   return pendingCalls;
 }

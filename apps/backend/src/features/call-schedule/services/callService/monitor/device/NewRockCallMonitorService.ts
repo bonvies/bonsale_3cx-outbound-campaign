@@ -1,7 +1,7 @@
 import http from 'http';
 import { ICallMonitorService } from '../../callMonitorService';
 import {
-  handleRing, handleAnswer, handleBye,
+  handleRing, handleAnswer, handleBye, clearPendingCall,
   registerCall, cancelScheduleJobs,
   getPendingCalls,
   RegisterCallOptions,
@@ -47,7 +47,7 @@ function connect(): void {
       } else if (body.includes('attribute="BYE"')) {
         // 我方掛斷，通話正常結束 → 不觸發重試，只清除監控
         console.log(`[CallMonitor] 📴 BYE ext=${firstExt ?? '?'}（我方掛斷）`);
-        if (trackedExt) pendingCalls.delete(trackedExt);
+        if (trackedExt) clearPendingCall(trackedExt);
       } else if (body.includes('attribute="BUSY"')) {
         console.log(`[CallMonitor] 📴 BUSY ext=${firstExt ?? '?'}`);
       } else if (body.includes('<Cdr')) {
