@@ -256,9 +256,9 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       const tollAllow = resolveTollAllowFromFiasCs(csCode, `GI（房間=${roomNumber}）`);
 
       // FIAS GI 不需回覆業務層 ACK，失敗只 log（不中斷 FIAS 連線）
-      const result = await checkin(extension, guestName ?? `Room ${extension}`, tollAllow);
+      const result = await checkin(extension, guestName?.trim() || `Room ${extension}`, tollAllow);
       if (result.success) {
-        console.log(`[FIAS] GI check-in 完成：房間=${roomNumber} 分機=${extension} 房客=${guestName ?? '(未提供)'} 權限=${tollAllow}`);
+        console.log(`[FIAS] GI check-in 完成：房間=${roomNumber} 分機=${extension} 房客=${guestName?.trim() || '(未提供)'} 權限=${tollAllow}`);
       } else {
         console.error(`[FIAS] GI check-in 失敗（房間=${roomNumber} 分機=${extension}）:`, result.error);
       }
@@ -327,9 +327,9 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
         console.error(`[FIAS] GC 換房：舊房退房失敗（房間=${oldRoomNumber} 分機=${oldExtension}）:`, checkoutResult.error);
       }
 
-      const checkinResult = await checkin(newExtension, guestName ?? `Room ${newExtension}`, tollAllow);
+      const checkinResult = await checkin(newExtension, guestName?.trim() || `Room ${newExtension}`, tollAllow);
       if (checkinResult.success) {
-        console.log(`[FIAS] GC 換房完成：${oldRoomNumber}（分機=${oldExtension}）→ ${newRoomNumber}（分機=${newExtension}）房客=${guestName ?? '(未提供)'} 權限=${tollAllow}`);
+        console.log(`[FIAS] GC 換房完成：${oldRoomNumber}（分機=${oldExtension}）→ ${newRoomNumber}（分機=${newExtension}）房客=${guestName?.trim() || '(未提供)'} 權限=${tollAllow}`);
       } else {
         console.error(`[FIAS] GC 換房：新房入住失敗（房間=${newRoomNumber} 分機=${newExtension}）:`, checkinResult.error);
       }
