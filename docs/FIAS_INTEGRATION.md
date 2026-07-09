@@ -92,15 +92,13 @@ PMS 通知系統在指定時間撥打指定房間。
 \x02WR|RN101|TI0730|DT260312|RI5|MR3\x03
 ```
 
-**系統 → PMS（回應）**
-```
-\x02WC|RN<房間號碼>|ST<狀態>\x03
-```
+**系統 → PMS**：官方規格明訂「No response is necessary to a WR or WC record」，**不回應**。
 
-| `ST` | 說明 |
-|------|------|
-| `1` | 成功接受預約 |
-| `0` | 失敗 |
+⚠️ 過去這裡曾記錄「系統 → PMS（回應）：`WC|RN<房間號碼>|ST<狀態>`」，已證實是錯誤設計並移除：
+`WC` 官方語意是「取消叫醒」，拿它當 WR 的自訂 ACK 會讓 PMS（Protel）把這個回應誤判成
+真正的取消請求。實測發現 Protel 收到後會記錄「Deleted from room X」、`Tries=0`，
+代表 PMS 認為這筆晨喚被取消了，即使我方後續仍照排程正常撥打電話。詳見
+`docs/FIAS_LAKESHORE_TEST_LOG.md` 及 `fiasHandler.ts` `case 'WR'` 的說明註解。
 
 **叫醒流程**
 ```
@@ -138,10 +136,7 @@ PMS 通知系統取消指定房間的叫醒排程。`WC` 為 Oracle Hospitality 
 \x02WC|RN101|TI0730|DT260312\x03
 ```
 
-**系統 → PMS（回應）**
-```
-\x02WC|RN<房間號碼>|ST<狀態>\x03
-```
+**系統 → PMS**：同上，官方規格不需要回應。
 
 取消時會同時刪除 DB 記錄並取消所有待執行的重試排程。
 

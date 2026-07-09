@@ -131,6 +131,10 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
     // docs/FIAS_INTEGRATION.md 過去記錄的是 DT，兩者都沒實測驗證過，此處
     // DT 優先、缺漏時退回 DA，兩種都不漏接。RI/MR（重試間隔/次數）非官方欄位，
     // 缺漏時套用我方預設值（1 分鐘／0 次，即不重試）。
+    // 規格明訂「No response is necessary to a WR or WC record」，且 WC 官方語意
+    // 是「取消叫醒」——先前用 WC|RN...|ST1/0 當自訂 ACK，會被 PMS（Protel）當成
+    // 真正的取消請求處理（實測發現 Protel 收到後記錄 "Deleted from room X"），
+    // 所以這裡不再回應，只依規格送最終的 WA。
     case 'WR': {
       const roomNumber = msg.fields.RN;
       const timeStr = msg.fields.TI;  // HHMM
@@ -177,16 +181,15 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
         } else {
           console.log(`[FIAS] WR 排程：房間=${roomNumber} 分機=${extension} 時間=${jobDate.toISOString()} retryInterval=${retryIntervalMin}min maxRetries=${maxRetries} id=${newId}`);
         }
-        conn.send(`WC|RN${roomNumber}|ST1`);
       } catch (err) {
         console.error(`[FIAS] WR 處理失敗:`, err);
-        conn.send(`WC|RN${roomNumber}|ST0`);
       }
       break;
     }
 
     // ── WC：取消叫醒（Wakeup Clear）──────────────
-    // 日期欄位同 WR，DT 優先、缺漏時退回官方的 DA。
+    // 日期欄位同 WR，DT 優先、缺漏時退回官方的 DA。規格明訂 WC 不需要回應
+    // （理由同上方 WR 的說明），這裡只處理刪除、不回送任何記錄。
     case 'WC': {
       const roomNumber = msg.fields.RN;
       const timeStr = msg.fields.TI;
@@ -205,11 +208,8 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
         } else {
           console.warn(`[FIAS] WC 找不到對應排程：房間=${roomNumber} 分機=${extension} 時間=${jobDate.toISOString()}`);
         }
-
-        conn.send(`WC|RN${roomNumber}|ST1`);
       } catch (err) {
         console.error(`[FIAS] WC 處理失敗:`, err);
-        conn.send(`WC|RN${roomNumber}|ST0`);
       }
       break;
     }
