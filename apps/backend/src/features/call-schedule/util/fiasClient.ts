@@ -2,17 +2,20 @@ import net from 'net';
 import iconv from 'iconv-lite';
 import { FiasConn, FiasMessage } from '../types/fias/fiasTypes';
 import { setFiasConn } from './fiasConnectionStore';
+import { sendLinkStart } from './fiasLinkProtocol';
 
 const STX = '\x02';
 const ETX = '\x03';
 const FIAS_ENCODING = process.env.FIAS_ENCODING ?? 'utf8';
+// 規格「Alive-Check」章節建議主動送 LS 的頻率不超過每 5 分鐘一次
+const MIN_HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
 
 export type FiasClientConfig = {
   host: string;
   port: number;
   reconnectDelayMs?: number;    // default 5000
   maxReconnectDelayMs?: number; // default 60000
-  heartbeatIntervalMs?: number; // default 0（停用），> 0 則定時送 LA
+  heartbeatIntervalMs?: number; // default 0（停用），> 0 則定時送 LS 做 alive-check；設定值低於 5 分鐘會被提升到 5 分鐘（規格建議下限）
 };
 
 export type FiasClientHandler = (msg: FiasMessage, conn: FiasConn) => void | Promise<void>;
@@ -25,13 +28,6 @@ function parseFiasFields(fields: string[]): Record<string, string> {
     obj[key] = value;
   });
   return obj;
-}
-
-function buildLsMessage(): string {
-  const now = new Date();
-  const da = now.toISOString().slice(2, 10).replace(/-/g, ''); // YYMMDD
-  const ti = now.toISOString().slice(11, 19).replace(/:/g, ''); // HHMMSS
-  return `LS|DA${da}|TI${ti}`;
 }
 
 /**
@@ -51,7 +47,16 @@ export function connectToPms(
 ): void {
   const baseDelay = config.reconnectDelayMs ?? 5000;
   const maxDelay = config.maxReconnectDelayMs ?? 60000;
-  const heartbeatInterval = config.heartbeatIntervalMs ?? 0;
+  const configuredHeartbeat = config.heartbeatIntervalMs ?? 0;
+  // heartbeatInterval 會被提升到規格建議下限（5 分鐘）或停用（0），避免設定過低造成 PMS 端負擔
+  const heartbeatInterval = configuredHeartbeat > 0
+    ? Math.max(configuredHeartbeat, MIN_HEARTBEAT_INTERVAL_MS)
+    : 0;
+  if (configuredHeartbeat > 0 && heartbeatInterval !== configuredHeartbeat) {
+    console.warn(
+      `[FiasClient] FIAS_HEARTBEAT_INTERVAL_MS=${configuredHeartbeat} 低於規格建議下限，已提升為 ${heartbeatInterval}ms（5 分鐘）`
+    );
+  }
   let currentDelay = baseDelay;
 
   function connect(): void {
@@ -74,11 +79,13 @@ export function connectToPms(
       };
 
       setFiasConn(conn);
-      conn.send(buildLsMessage());
+      sendLinkStart(conn);
 
+      // 依規格「Alive-Check」章節：主動確認鏈路存活要送 LS（不是 LA），
+      // 且官方建議頻率不超過每 5 分鐘一次（FIAS_HEARTBEAT_INTERVAL_MS 預設值即依此設定）。
       if (heartbeatInterval > 0) {
         heartbeatTimer = setInterval(() => {
-          conn?.send('LA');
+          if (conn) sendLinkStart(conn);
         }, heartbeatInterval);
       }
     });

@@ -33,6 +33,13 @@ const LINK_RECORDS: { ri: string; fields: string }[] = [
   { ri: 'PA', fields: 'RNASP#DATIGNIDSOWSC#' },        // 計費回覆（From PMS，全部欄位）
 ];
 
+function buildLsMessage(): string {
+  const now = new Date();
+  const da = now.toISOString().slice(2, 10).replace(/-/g, ''); // YYMMDD
+  const ti = now.toISOString().slice(11, 19).replace(/:/g, ''); // HHMMSS
+  return `LS|DA${da}|TI${ti}`;
+}
+
 function buildLdMessage(): string {
   const now = new Date();
   const da = now.toISOString().slice(2, 10).replace(/-/g, '');
@@ -86,4 +93,13 @@ export function sendLinkEnd(conn: FiasConn): void {
  */
 export function sendLinkAlive(conn: FiasConn): void {
   conn.send(buildLaMessage());
+}
+
+/**
+ * 主動送出 LS 做 alive-check（依規格 Alive-Check 章節建議，不是送 LA）。
+ * 目前只有 fiasClient.ts 的心跳計時器會呼叫，獨立成函式以避免對外暴露
+ * buildLsMessage 本身。
+ */
+export function sendLinkStart(conn: FiasConn): void {
+  conn.send(buildLsMessage());
 }
