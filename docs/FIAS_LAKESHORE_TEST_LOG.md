@@ -11,13 +11,13 @@
 
 | 項目 | 狀態 | 備註 |
 |------|------|------|
-| 1. Check in | ✅ | |
-| 2. Morning call | ✅ | 完整迴圈已驗證；另發現並修復 `WC` 誤判為取消請求的 bug，**待重新實測確認** |
+| 1. Check in | ✅ | 中文姓名編碼已用真實案例（「測試」）驗證無誤 |
+| 2. Morning call | ✅ | 完整迴圈已驗證；`WC` 誤判為取消請求的 bug 已修復並確認部署生效（後續測試不再送出該 ACK） |
 | 3. DND（勿擾） | ✅ | |
-| 4. Posting calls | ⬜ 未測 | |
+| 4. Posting calls | ✅ | 已用真實外線電話測完整流程，`PS`/`PA` 格式與金額皆正確 |
 | 5. Room Move | ✅ | 實際走 GO+GI，不是 GC |
 | 6. Room Status | ✅ | 測 `/api/v1/lakeshore/room/status` 成功 |
-| 7. Check out | ⬜ 未測 | |
+| 7. Check out | ✅ | 獨立（非換房情境）的 `GO` 已測過 |
 
 ---
 
@@ -44,6 +44,17 @@
 - `CS: '0'` → 我方 `toll_allow` 對照為 `CS0`（僅內線/緊急/免付費，不含市內），check-in 時房客電話權限預設偏嚴格
 - `GA`/`GD`（抵/離日期）、`PT`（房價代碼）、`MK`（市場代碼）等大量欄位都有值，證實 `fiasLinkProtocol.ts` 的 `LINK_RECORDS` 對 `GI` 宣告全部欄位是對的（沒宣告會收不到這些）
 - ⚠️ `GN`（房客姓名）內容是 `'f8,h)&h(\x02f\b?'`，明顯是亂碼，裡面還混了一個 `\x02`（STX 控制字元）——**懷疑是編碼問題**（例如 Protel 用非 UTF-8 編碼送出中文姓名，但我方 `FIAS_ENCODING` 設定沒對上），需要之後拿真實中文姓名的房客再測一次確認，不要照這筆資料直接判斷姓名處理沒問題
+
+### 2026-07-09 中文姓名編碼確認無誤
+
+```
+[FiasClient] 收到原始訊息: GI|RN0330|G#3934582|GN測試|CS0|DA260709|TI141628|...
+訊息內容: { type: 'GI', fields: { ..., GN: '測試', ... } }
+[FIAS] GI check-in 完成：房間=0330 分機=0330 房客=測試 權限=CS0
+[freeSwitchPmsApi] checkin(房號=0330) HTTP 200 { after: { effective_caller_id_name: '測試', ... }, reloadxml: { ok: true, stdout: '+OK [Success]' } }
+```
+
+中文姓名「測試」從 PMS 送出、我方解析、到設定進 FreeSwitch/FusionPBX 分機的 `effective_caller_id_name`，全程沒有亂碼，`FIAS_ENCODING=utf8` 對這台 PMS 是對的設定。**先前記錄的亂碼疑慮到此解除**——話機最終有沒有把這個名字顯示出來，取決於話機本身/FreeSwitch SIP 設定，不在我方系統可控範圍內（我方能保證的是資料正確送到並設定成功，已驗證無誤）。
 
 ---
 
@@ -129,6 +140,19 @@
 
 **修復**：`fiasHandler.ts` 的 `case 'WR'`、`case 'WC'` 都不再回送任何確認，改成依規格完全不回應；`docs/FIAS_INTEGRATION.md` 的 `WR`/`WC` 章節同步更新，移除錯誤的「系統 → PMS（回應）」說明。
 
+### 2026-07-09 確認修復已部署生效
+
+14:17、14:20、14:25 三筆 `WR` 測試（見下方時間軸），log 裡都**沒有再出現** `[FiasClient] 發送訊息: WC|RN0330|ST1`——確認修復後的版本已經在跑，不會再誤觸發 Protel 的取消邏輯。（Protel 端報表是否確實不再顯示「Deleted from room X」，還是要請客戶端協助確認一次，我方只能確認沒有再送出那個訊息。）
+
+### 2026-07-09 重試次數/間隔改為環境變數控制
+
+規格查證後確認 `WR` 官方沒有重試相關欄位、PMS 也無法告知我方想要的重試行為（詳見 `docs/FIAS_INTEGRATION.md`）。原本讀取 PMS 送來的 `RI`/`MR`（永遠是空值）改成完全由我方環境變數決定：
+
+- `FIAS_WR_RETRY_INTERVAL_MIN`（預設 `1` 分鐘）
+- `FIAS_WR_MAX_RETRIES`（預設 `0` 次，不重試）
+
+客戶（Verena）明確反饋期望行為是「撥打 2 次（重試 1 次）都沒接聽才送出最終 `WA`」，之後需要時把煙波環境的 `FIAS_WR_MAX_RETRIES` 設成 `1` 即可達成，不需要改程式碼。
+
 ---
 
 ## 3. DND 勿擾（RE）
@@ -145,9 +169,23 @@
 
 ## 4. Posting calls（PS/PA）
 
-尚未實測。已知：
-- `PS`/`PA` 是我方主動送出、PMS 回應的方向，格式已依官方規格實作（`fiasHandler.ts` 目前收到 `PA` 只會印「未知訊息類型」，尚未真正處理回傳內容）
-- 之前用 `/test-fias-result` 手動送過 `PS`，PMS 有正確回 `PA|RN0527|ASOK|...`，證實握手/收送正常，但這是手動模擬，還沒測過真實房客撥打電話觸發的完整流程
+### 2026-07-09 真實外線通話完整實測
+
+房間 0330 的分機被手動改成允許外線（`toll_allow`，非透過 PMS 的 `CS` 設定——`CS0` 房間預設打不出外線，測試時是主管手動調整的，之後任何 `GI`/`GO` 進來會依 PMS 送的 `CS` 值自動覆蓋回去），實際撥打 `0915970815`（Mobile 類別，通話 13 秒/計費 10 秒），完整流程：
+
+```
+[FreeSwitchMonitor] 收到 CDR: { type: 'fias_posting', fias_payload: 'PS|RN0330|PTC|TA500|DA260709|TI155638|P#93803011|DD0915970815|DU000010|PCN|CTMobile|', should_post: true, amount: 500, category: 'Mobile', ... }
+[FiasClient] 發送訊息: PS|RN0330|PTC|TA500|DA260709|TI155638|P#93803011|DD0915970815|DU000010|PCN|CTMobile|
+[FreeSwitchMonitor] 已轉送計費資料給 Protel：房間=0330 金額=500
+[FiasClient] 收到原始 Buffer: PA|RN0330|ASOK|P#93803011|DA260709|TI155638|GN|ID|SO|WS|C#|
+[FIAS] PA 入帳成功：房間=0330 P#=93803011
+```
+
+**觀察重點**
+- `PT=C`（Direct/pre-costed charge）+ `TA500`：FreeSwitch middleware 自己算好金額（費率表内建 `mobile_per_minute: 500`）直接告知 PMS，對照官方規格範例（"Telephone charge posting (PTC, i.e. call costed by other system)"）格式完全正確
+- 只送出一次 `PS`，收到一次 `PA...ASOK`，沒有重複發送
+- `fiasHandler.ts` 的 `case 'PA'` 已經有正式處理（判斷 `AS==='OK'` 記錄成功/失敗），不再是「未知訊息類型」，舊記錄已過時
+- `PS` 是 FreeSwitch middleware 自己的 CDR 邏輯偵測到房客外撥並判斷 `should_post=true` 後主動推送，跟我方主動撥打電話用的 `callback_url` 是兩條不同機制，不要搞混
 
 ---
 
@@ -186,16 +224,25 @@
 
 ## 7. Check-out（GO）
 
-尚未單獨測試（第 5 項換房測試裡有出現 `GO`，格式可參考上方，但那是換房情境下的 `GO`，非單純退房，建議還是找機會單獨測一次一般退房）。
+### 2026-07-09 獨立退房測試
+
+```
+[FiasClient] 收到原始訊息: GO|RN0330|G#3934582|GSN|DA260709|TI141404|
+[FIAS] GO check-out 完成：房間=0330 分機=0330
+```
+
+跟第 5 項換房情境不同，這次是**單獨的一般退房**（沒有緊接著同一個 `G#` 的 `GI`），2 分 24 秒後才收到下一筆全新的 `GI`（不同測試房客「測試」入住）。確認 `case 'GO'` 在非換房情境下也正常運作，分機權限正確收回。
 
 ---
 
 ## 待確認/待處理事項彙總
 
-1. **`GN` 中文姓名編碼**：目前唯一一筆範例是亂碼，需要真實中文姓名房客的 check-in 再驗證一次
+1. ~~**`GN` 中文姓名編碼**~~：✅ 2026-07-09 已用真實中文姓名（「測試」）驗證無誤
 2. **`HS` 欄位**：非官方欄位，目前忽略，若之後發現有業務意義再處理
-3. **Posting calls**：尚未用真實房客撥打電話驗證完整流程（`PS` 送出 → `PA` 回應 → 我方是否需要處理 `PA` 內容）
-4. **Check-out**：尚未單獨測試一般退房情境
+3. ~~**Posting calls**~~：✅ 2026-07-09 已用真實外線電話驗證完整流程（`PS` 送出 → `PA` 回應），`case 'PA'` 也已正式處理
+4. ~~**Check-out**~~：✅ 2026-07-09 已單獨測試一般退房情境
 5. **`GC`（換房）邏輯**：目前這台 Protel 用不到，程式碼保留但沒有實測驗證過
-6. **`WC` 誤判為取消請求**：已修復（移除自訂 ACK），但**尚未用修復後的版本重新實測**，
-   下次測 Morning call 時要確認 Protel 端不會再記錄 `Deleted from room X`
+6. ~~**`WC` 誤判為取消請求**~~：✅ 已修復並確認部署生效（2026-07-09 後續測試不再送出該 ACK），
+   Protel 端報表是否確實不再顯示 `Deleted from room X` 還需請客戶協助最終確認
+7. **`FIAS_WR_MAX_RETRIES` 正式套用**：客戶反饋期望「重試 1 次才送出最終結果」，目前煙波環境
+   還沒把這個環境變數設成 `1`（維持預設 `0`），待客戶確認後再調整正式環境設定
