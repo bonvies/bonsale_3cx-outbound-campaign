@@ -34,7 +34,7 @@ type ImmediateCallFormData = z.infer<typeof immediateCallSchema>
 const defaultValues: ImmediateCallFormData = {
   extension: '',
   retryInterval: '5',
-  maxRetries: '3',
+  maxRetries: '0',
   notificationContent: '標準叫醒服務',
   audioFile: '預設鈴聲',
   notes: '',
@@ -188,6 +188,7 @@ export function ImmediateCallDialog({ trigger, onSuccess }: ImmediateCallDialogP
                   helperText={error?.message}
                   required
                 >
+                  <MenuItem value="0">0 次</MenuItem>
                   <MenuItem value="1">1 次</MenuItem>
                   <MenuItem value="2">2 次</MenuItem>
                   <MenuItem value="3">3 次</MenuItem>

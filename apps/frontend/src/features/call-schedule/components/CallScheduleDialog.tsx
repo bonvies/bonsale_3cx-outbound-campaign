@@ -43,7 +43,7 @@ const defaultValues: CallScheduleFormData = {
   extension: '',
   date: format(new Date(), 'yyyy/MM/dd HH:mm'),
   retryInterval: '5',
-  maxRetries: '3',
+  maxRetries: '0',
   notificationContent: '標準叫醒服務',
   audioFile: '預設鈴聲',
   notes: '',
@@ -84,7 +84,7 @@ export function CallScheduleDialog({
         extension: fetchedData.extension,
         date: fetchedData.date ? format(new Date(fetchedData.date), 'yyyy/MM/dd HH:mm') : '',
         retryInterval: String(fetchedData.retryInterval),
-        maxRetries: String(fetchedData.maxRetries ?? 3),
+        maxRetries: String(fetchedData.maxRetries ?? 0),
         notificationContent: fetchedData.notificationContent,
         audioFile: fetchedData.audioFile,
         notes: fetchedData.notes ?? '',
@@ -262,6 +262,7 @@ export function CallScheduleDialog({
                   helperText={error?.message}
                   required
                 >
+                  <MenuItem value="0">0 次</MenuItem>
                   <MenuItem value="1">1 次</MenuItem>
                   <MenuItem value="2">2 次</MenuItem>
                   <MenuItem value="3">3 次</MenuItem>

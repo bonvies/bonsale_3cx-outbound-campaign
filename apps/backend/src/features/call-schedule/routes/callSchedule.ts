@@ -57,7 +57,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST /api/call-schedule
 router.post('/', (req: Request, res: Response) => {
   try {
-    const { audioFile, date, extension, notificationContent, retryInterval, maxRetries = '3', notes = '', roomNum } = req.body;
+    const { audioFile, date, extension, notificationContent, retryInterval, maxRetries = '0', notes = '', roomNum } = req.body;
 
     if (!audioFile || !date || !extension || !notificationContent || !retryInterval) {
       res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -84,7 +84,7 @@ router.post('/', (req: Request, res: Response) => {
 // POST /api/call-schedule/immediate-call
 router.post('/immediate-call', async (req: Request, res: Response) => {
   try {
-    const { audioFile, extension, notificationContent, retryInterval, maxRetries = '3', notes = '', roomNum } = req.body;
+    const { audioFile, extension, notificationContent, retryInterval, maxRetries = '0', notes = '', roomNum } = req.body;
 
     if (!audioFile || !extension || !notificationContent || !retryInterval) {
       res.status(400).json({ success: false, message: 'Missing required fields' });

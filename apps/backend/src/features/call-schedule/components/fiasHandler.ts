@@ -130,13 +130,13 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
     // 官方規格日期欄位是 DA（見 fiasLinkProtocol.ts LINK_RECORDS 說明），但
     // docs/FIAS_INTEGRATION.md 過去記錄的是 DT，兩者都沒實測驗證過，此處
     // DT 優先、缺漏時退回 DA，兩種都不漏接。RI/MR（重試間隔/次數）非官方欄位，
-    // 缺漏時套用我方預設值（5 分鐘／3 次）。
+    // 缺漏時套用我方預設值（1 分鐘／0 次，即不重試）。
     case 'WR': {
       const roomNumber = msg.fields.RN;
       const timeStr = msg.fields.TI;  // HHMM
       const dateStr = msg.fields.DT ?? msg.fields.DA;  // YYMMDD（可選）
       const retryIntervalMin = msg.fields.RI ?? '1';
-      const maxRetries = msg.fields.MR ?? '1';
+      const maxRetries = msg.fields.MR ?? '0';
 
       const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
       const extension = extensionPrefix + roomNumber;
