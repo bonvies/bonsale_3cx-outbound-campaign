@@ -76,7 +76,7 @@ PMS 通知系統在指定時間撥打指定房間。
 
 **PMS → 系統**
 ```
-\x02WR|RN<房間號碼>|TI<時間>|DT<日期>|RI<重試間隔>|MR<最大重試>\x03
+\x02WR|RN<房間號碼>|TI<時間>|DT<日期>\x03
 ```
 
 | 欄位 | 說明 | 格式 | 必填 |
@@ -84,13 +84,18 @@ PMS 通知系統在指定時間撥打指定房間。
 | `RN` | 房間號碼 | 數字字串，如 `101` | ✅ |
 | `TI` | 叫醒時間 | `HHMM`，如 `0730` | ✅ |
 | `DT` | 叫醒日期 | `YYMMDD`，如 `260312` | ❌（省略則當天，已過則明天）|
-| `RI` | 未接時重試間隔（分鐘）| 數字字串，如 `5` | ✅ |
-| `MR` | 最大重試次數 | 數字字串，如 `3` | ✅ |
 
-**範例：2026/03/12 07:30 叫醒 101 房，每 5 分鐘重試最多 3 次**
+**範例：2026/03/12 07:30 叫醒 101 房**
 ```
-\x02WR|RN101|TI0730|DT260312|RI5|MR3\x03
+\x02WR|RN101|TI0730|DT260312\x03
 ```
+
+⚠️ 過去這裡曾記錄 `RI`（重試間隔）、`MR`（最大重試次數）是 PMS 會填的欄位，已證實錯誤並移除：
+Oracle Hospitality IFC8 FIAS Interface Specs 官方規格的 `WR` 只有 `DA`/`RN`/`TI` 三個欄位，
+且明文規定「重試是 vendor system（我方）自己的責任」，PMS 沒有管道告知我方想要的重試行為。
+實測也證實這台 PMS（Protel）送出的 `RI`/`MR` 永遠是空字串。重試次數/間隔現在完全由我方
+環境變數決定（`FIAS_WR_MAX_RETRIES`、`FIAS_WR_RETRY_INTERVAL_MIN`，見 `.env.example`），
+跟 PMS 送什麼無關。
 
 **系統 → PMS**：官方規格明訂「No response is necessary to a WR or WC record」，**不回應**。
 
@@ -100,17 +105,17 @@ PMS 通知系統在指定時間撥打指定房間。
 代表 PMS 認為這筆晨喚被取消了，即使我方後續仍照排程正常撥打電話。詳見
 `docs/FIAS_LAKESHORE_TEST_LOG.md` 及 `fiasHandler.ts` `case 'WR'` 的說明註解。
 
-**叫醒流程**
+**叫醒流程**（`FIAS_WR_RETRY_INTERVAL_MIN`/`FIAS_WR_MAX_RETRIES` 為我方環境變數，非 PMS 提供）
 ```
 WR 接收
   └─▶ 寫入 call_schedules（callStatus: 排程中）
         └─▶ 到時間撥打電話（callStatus: 撥打中）
               ├─▶ 響鈴中
               ├─▶ 已接聽 ─────────────────────── 結束
-              └─▶ 未接聽 → 等待 RI 分鐘後重試
-                    └─▶ 重試 n/MR
+              └─▶ 未接聽 → 等待 FIAS_WR_RETRY_INTERVAL_MIN 分鐘後重試
+                    └─▶ 重試 n/FIAS_WR_MAX_RETRIES
                           ├─▶ 已接聽 ──────────── 結束
-                          └─▶ 達到 MR → 未接聽 ── 結束
+                          └─▶ 達到上限 → 未接聽 ── 結束
 ```
 
 ---

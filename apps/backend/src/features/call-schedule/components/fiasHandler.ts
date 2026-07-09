@@ -75,6 +75,15 @@ function isFreeSwitchEquipment(): boolean {
 const VALID_FIAS_CS_CODES = ['0', '1', '2', '3'];
 const DEFAULT_TOLL_ALLOW: TollAllow = 'CS2';
 
+// Oracle Hospitality IFC8 FIAS Interface Specs 的 WR 記錄官方欄位只有 DA/RN/TI，
+// 沒有「重試次數」「重試間隔」這種欄位——重試完全是 vendor system（我方）自己的責任
+// （規格原文：「If the vendor system retries a wakeup it may NOT send an intermediate
+// result...」），PMS 沒有管道告訴我們它想要的重試行為。之前用 RI/MR 這兩個自創欄位
+// 去讀 PMS 送來的值，實測證實 PMS（Protel）永遠不會填，形同虛設。改成完全由我方
+// 環境變數決定，不再假裝這是從 PMS 讀來的設定。
+const FIAS_WR_RETRY_INTERVAL_MIN = process.env.FIAS_WR_RETRY_INTERVAL_MIN ?? '1';
+const FIAS_WR_MAX_RETRIES = process.env.FIAS_WR_MAX_RETRIES ?? '0';
+
 /** 解析 GI/GC 訊息的 CS 欄位；缺漏或非標準值時退回預設，並記錄原因 */
 function resolveTollAllowFromFiasCs(cs: string | undefined, context: string): TollAllow {
   if (cs === undefined || cs === '') {
@@ -129,8 +138,9 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
     // ── WR：叫醒預約 ──────────────────────────
     // 官方規格日期欄位是 DA（見 fiasLinkProtocol.ts LINK_RECORDS 說明），但
     // docs/FIAS_INTEGRATION.md 過去記錄的是 DT，兩者都沒實測驗證過，此處
-    // DT 優先、缺漏時退回 DA，兩種都不漏接。RI/MR（重試間隔/次數）非官方欄位，
-    // 缺漏時套用我方預設值（1 分鐘／0 次，即不重試）。
+    // DT 優先、缺漏時退回 DA，兩種都不漏接。重試次數/間隔改用
+    // FIAS_WR_MAX_RETRIES/FIAS_WR_RETRY_INTERVAL_MIN 環境變數（見上方常數宣告
+    // 說明：這不是 PMS 能提供的資訊，規格上也沒有這兩個欄位）。
     // 規格明訂「No response is necessary to a WR or WC record」，且 WC 官方語意
     // 是「取消叫醒」——先前用 WC|RN...|ST1/0 當自訂 ACK，會被 PMS（Protel）當成
     // 真正的取消請求處理（實測發現 Protel 收到後記錄 "Deleted from room X"），
@@ -139,8 +149,8 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       const roomNumber = msg.fields.RN;
       const timeStr = msg.fields.TI;  // HHMM
       const dateStr = msg.fields.DT?.trim() || msg.fields.DA;  // YYMMDD（可選）
-      const retryIntervalMin = msg.fields.RI?.trim() || '1';
-      const maxRetries = msg.fields.MR?.trim() || '0';
+      const retryIntervalMin = FIAS_WR_RETRY_INTERVAL_MIN;
+      const maxRetries = FIAS_WR_MAX_RETRIES;
 
       const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
       const extension = extensionPrefix + roomNumber;
