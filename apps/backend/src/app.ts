@@ -108,7 +108,7 @@ if (ENABLE_CALL_SCHEDULE) {
 
 // 根路由：健康檢查 / 版本確認
 app.get('/', (_req, res) => {
-  res.json({ message: 'Welcome to the API', version: '0.0.1' });
+  res.json({ message: 'Welcome to the API', version: '0.0.1', clientId: CLIENT_ID });
 });
 
 // 404 handler：攔截所有未匹配的路由
