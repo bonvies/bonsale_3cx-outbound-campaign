@@ -126,7 +126,12 @@ export async function initDatabase(): Promise<void> {
     fs.mkdirSync(dbDir, { recursive: true });
   }
 
-  db = new Database(dbPath);
+  // timeout：拿不到鎖時的重試等待上限（毫秒），避免未來 crontab 清理腳本跟 App 寫入撞期時
+  // 直接收到 SQLITE_BUSY 報錯。better-sqlite3 預設已是 5000，這裡明寫出來方便之後調整。
+  // 若清理腳本不是用 better-sqlite3（例如用 sqlite3 CLI），要自行下 PRAGMA busy_timeout，
+  // 因為這是連線層級設定，不會套用到別的連線。
+  db = new Database(dbPath, { timeout: 5000 });
+
   migrate(db);
 
   console.log(`[Database] Initialized at: ${dbPath}`);
