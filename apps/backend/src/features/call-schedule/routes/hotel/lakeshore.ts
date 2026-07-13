@@ -3,6 +3,11 @@ import { fromZonedTime } from 'date-fns-tz';
 import { getFiasConn } from '../../util/fiasConnectionStore';
 import { getSiteTimezone } from '../../util/timezone';
 import { checkin, checkout, update, TollAllow } from '../../services/api/freeSwitchPmsApi';
+import lakeshoreRoomNumbers from './lakeshoreRoomNumbers.json';
+
+// 煙波飯店（Lakeshore）房號清單，飯店提供，用於驗證房務系統推送的 roomno 是否存在
+// 《房務狀態串接開發規格書》4.3-4：房號不存在時應回 retcode 005
+const LAKESHORE_ROOM_NUMBERS: ReadonlySet<string> = new Set(lakeshoreRoomNumbers);
 
 const router: Router = express.Router();
 
@@ -86,24 +91,32 @@ router.post('/room/status', async (req: Request, res: Response) => {
     console.log('[Lakeshore] ===== Incoming Request =====');
     console.log('[Lakeshore] Body:', JSON.stringify(req.body, null, 2));
 
+    // 檢核白名單，非白名單 IP 直接回應 403
     if (rejectIfNotWhitelisted(req, res)) return;
 
     const { roomno, statustime } = req.body;
     // 規格書欄位表寫 roomstatus，但 JSON 範例卻用 status，兩者皆接受
     const roomstatus = req.body.roomstatus ?? req.body.status;
 
+    // 檢核必填欄位
     if (!roomno || roomstatus === undefined || roomstatus === null || roomstatus === '' || !statustime) {
       respond(res, '004', { message: 'roomno, roomstatus and statustime are required' });
       return;
     }
 
+    // 檢核 roomstatus 是否為有效代碼（見《房務狀態串接開發規格書》4.1-3）
     if (!VALID_ROOM_STATUSES.includes(String(roomstatus))) {
       respond(res, '002', { message: `invalid roomstatus: ${roomstatus}` });
       return;
     }
 
-    // TODO(4.3-4): 檢核房號於 3CX 是否存在 → retcode 005；目前先略過，待決定檢核方式後補上
+    // 檢核房號是否存在（房號清單見 lakeshoreRoomNumbers.json，飯店提供）
+    if (!LAKESHORE_ROOM_NUMBERS.has(String(roomno))) {
+      respond(res, '005', { message: `unknown roomno: ${roomno}` });
+      return;
+    }
 
+    // 檢核 statustime 是否為有效時間字串，且不早於「現在-10分」
     const timezone = await getSiteTimezone();
     const statusDate = parseStatusTime(statustime, timezone);
     if (!statusDate || statusDate.getTime() < Date.now() - STATUSTIME_MAX_AGE_MS) {
