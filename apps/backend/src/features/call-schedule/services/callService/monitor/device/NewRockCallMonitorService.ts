@@ -7,9 +7,7 @@ import {
   RegisterCallOptions,
 } from '../callMonitorCore';
 
-const OM_MONITOR_PORT = process.env.OM_MONITOR_PORT
-  ? parseInt(process.env.OM_MONITOR_PORT)
-  : 4022;
+const NEW_ROCK_API_MONITOR_PORT = parseInt(process.env.NEW_ROCK_API_MONITOR_PORT!);
 
 function connect(): void {
   const server = http.createServer((req, res) => {
@@ -57,8 +55,8 @@ function connect(): void {
     });
   });
 
-  server.listen(OM_MONITOR_PORT, () => {
-    console.log(`[CallMonitor] 🚀 OM 事件監聽伺服器啟動於 Port ${OM_MONITOR_PORT}`);
+  server.listen(NEW_ROCK_API_MONITOR_PORT, () => {
+    console.log(`[CallMonitor] 🚀 NewRock 事件監聽伺服器啟動於 Port ${NEW_ROCK_API_MONITOR_PORT}`);
   });
 }
 

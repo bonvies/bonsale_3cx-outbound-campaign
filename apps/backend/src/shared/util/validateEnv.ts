@@ -31,6 +31,11 @@ const schema = Joi.object({
     then: Joi.when('TELEPHONE_EQUIPMENT', { is: 'NewRock', then: Joi.required(), otherwise: Joi.allow('') }),
     otherwise: Joi.allow(''),
   }),
+  NEW_ROCK_API_MONITOR_PORT: Joi.string().when('ENABLE_CALL_SCHEDULE', {
+    is: 'true',
+    then: Joi.when('TELEPHONE_EQUIPMENT', { is: 'NewRock', then: Joi.required(), otherwise: Joi.allow('') }),
+    otherwise: Joi.allow(''),
+  }),
 
   YEASTAR_API_HOST: Joi.string().when('ENABLE_CALL_SCHEDULE', {
     is: 'true',
@@ -109,7 +114,7 @@ const VAR_GROUPS: [string, string[]][] = [
     'HTTP_HOST_MESSAGE_FOR_AI', 'POST_9000_BASIC_AUTH',
   ]],
   ['自動語音通知 Call Schedule', ['TELEPHONE_EQUIPMENT']],
-  ['自動語音通知 Call Schedule → NewRock', ['NEW_ROCK_API_HOST', 'NEW_ROCK_API_PATH']],
+  ['自動語音通知 Call Schedule → NewRock', ['NEW_ROCK_API_HOST', 'NEW_ROCK_API_PATH', 'NEW_ROCK_API_MONITOR_PORT']],
   ['自動語音通知 Call Schedule → Yeastar', [
     'YEASTAR_API_HOST', 'YEASTAR_API_PATH', 'YEASTAR_USERNAME', 'YEASTAR_PASSWORD',
   ]],

@@ -217,13 +217,12 @@ ENABLE_CALL_SCHEDULE=true        # 自動語音通知 (Call Schedule)
 # 電話設備選擇（必填，無預設值）
 TELEPHONE_EQUIPMENT=NewRock      # NewRock 或 Yeastar
 
-# OM 事件監聽 Port（接收設備 Push 通知）
-OM_MONITOR_PORT=4022
-
 # 外播主叫分機號碼
 OM_CALL_FROM_EXTENSION=9038
 
 # NewRock 設定（TELEPHONE_EQUIPMENT=NewRock 時必填）
+# OM 事件監聽 Port（接收設備 Push 通知，僅 NewRock 使用）
+NEW_ROCK_API_MONITOR_PORT=4022
 NEW_ROCK_API_HOST=http://your-newrock-host
 NEW_ROCK_API_PATH=/xml
 
