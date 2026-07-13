@@ -43,6 +43,7 @@ validateEnv();
 const ENABLE_OUTBOUND_CAMPAIGN = process.env.ENABLE_OUTBOUND_CAMPAIGN === 'true';
 const ENABLE_CALL_SCHEDULE = process.env.ENABLE_CALL_SCHEDULE === 'true';
 const ENABLE_FIAS = process.env.ENABLE_FIAS !== 'false'; // 預設 true，設 false 可停用
+const CLIENT_ID = process.env.CLIENT_ID; // 用於掛載/啟用特定客戶的客製化程式區段（例如 lakeshore 專屬路由）
 
 const PORT = process.env.HTTP_PORT || 4020; // HTTP / WebSocket 主服務埠
 const FIAS_PORT = process.env.FIAS_PORT || 4021; // FIAS TCP 伺服器埠
@@ -398,7 +399,6 @@ async function setupOutboundCampaign(): Promise<void> {
 async function setupCallSchedule(): Promise<void> {
   const [
     { default: callScheduleRouter },
-    { default: lakeshoreRouter },
     { initDatabase },
     { startCallMonitorServer },
     { recoverPendingSchedules },
@@ -411,7 +411,6 @@ async function setupCallSchedule(): Promise<void> {
     { registerCallResultHandler },
   ] = await Promise.all([
     import('./features/call-schedule/routes/callSchedule'),
-    import('./features/call-schedule/routes/hotel/lakeshore'),
     import('./features/call-schedule/services/database'),
     import('./features/call-schedule/services/callService/callMonitorService'),
     import('./features/call-schedule/services/callService/callScheduleService'),
@@ -428,7 +427,17 @@ async function setupCallSchedule(): Promise<void> {
   // 註：FreeSWITCH 的 CDR webhook（/freeswitch-webhook）由 FreeSwitchCallMonitorService
   //     在 startCallMonitorServer() 時自行掛載，僅 TELEPHONE_EQUIPMENT=FreeSwitch 時生效
   callScheduleRouter_!.use('/', callScheduleRouter);
-  lakeshoreRouter_!.use('/', lakeshoreRouter);
+
+  // 客戶專屬路由：依 CLIENT_ID 動態載入並掛載對應的客製化程式區段，新增客戶時在此加一個 case
+  switch (CLIENT_ID) {
+    case 'lakeshore': {
+      const { default: lakeshoreRouter } = await import('./features/call-schedule/routes/hotel/lakeshore');
+      lakeshoreRouter_!.use('/', lakeshoreRouter);
+      break;
+    }
+    default:
+      break;
+  }
 
   // ── 資料庫初始化 ──────────────────────────────────────────────────────────
   await initDatabase();

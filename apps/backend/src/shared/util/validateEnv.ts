@@ -3,6 +3,8 @@ import Joi from 'joi';
 // 依 ENABLE_OUTBOUND_CAMPAIGN / ENABLE_CALL_SCHEDULE / TELEPHONE_EQUIPMENT / FIAS_MODE
 // 的目前組合，驗證對應必填的環境變數是否存在。詳細分類請見 apps/backend/.env.example。
 const schema = Joi.object({
+  CLIENT_ID: Joi.string().required(),
+
   ENABLE_OUTBOUND_CAMPAIGN: Joi.string().valid('true', 'false').required(),
   ENABLE_CALL_SCHEDULE: Joi.string().valid('true', 'false').required(),
   ENABLE_FIAS: Joi.string().valid('true', 'false').optional(),
@@ -100,7 +102,7 @@ const schema = Joi.object({
 
 // 缺漏變數依此分組印出，順序即為報錯時的顯示順序
 const VAR_GROUPS: [string, string[]][] = [
-  ['通用設定', ['ENABLE_OUTBOUND_CAMPAIGN', 'ENABLE_CALL_SCHEDULE']],
+  ['通用設定', ['CLIENT_ID', 'ENABLE_OUTBOUND_CAMPAIGN', 'ENABLE_CALL_SCHEDULE']],
   ['自動外播 Outbound Campaign', [
     'BONSALE_HOST', 'BONSALE_X_API_KEY', 'BONSALE_X_API_SECRET',
     'HTTP_HOST_3CX', 'WS_HOST_3CX',
