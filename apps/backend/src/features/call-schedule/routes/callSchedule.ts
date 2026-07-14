@@ -5,6 +5,7 @@ import {
   createCallSchedule,
   updateCallSchedule,
   deleteCallSchedule,
+  deleteExpiredCallSchedules,
   triggerImmediateCall,
 } from '../services/callService/callScheduleService';
 
@@ -122,6 +123,30 @@ router.put('/:id', (req: Request, res: Response) => {
       return;
     }
     console.error('[CallSchedule] PUT error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// DELETE /api/call-schedule/expired?days=7
+// 批次清除過期排程資料，days 為保留天數（早於「現在 - days 天」的資料會被刪除），必填
+router.delete('/expired', (req: Request, res: Response) => {
+  try {
+    const { days } = req.query;
+    if (days === undefined) {
+      res.status(400).json({ success: false, message: 'days is required' });
+      return;
+    }
+
+    const retentionDays = Number(days);
+    if (!Number.isInteger(retentionDays) || retentionDays < 0) {
+      res.status(400).json({ success: false, message: 'days must be a non-negative integer' });
+      return;
+    }
+
+    const deletedCount = deleteExpiredCallSchedules(retentionDays);
+    res.json({ success: true, data: { deletedCount, retentionDays } });
+  } catch (error) {
+    console.error('[CallSchedule] DELETE /expired error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });

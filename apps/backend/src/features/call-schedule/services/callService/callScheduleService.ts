@@ -309,6 +309,17 @@ export function deleteCallSchedule(id: string): void {
   cancelScheduleJobs(id, schedule.scheduledJobs);
 }
 
+/**
+ * DELETE - 批次清除過期排程資料（date 早於「現在 - retentionDays 天」）
+ * 供定期清理用（例如 crontab 打 API 或手動呼叫），避免 SQLite 檔案無限增長
+ */
+export function deleteExpiredCallSchedules(retentionDays: number): number {
+  const db = getDatabase();
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+  const result = db.prepare('DELETE FROM call_schedules WHERE date < ?').run(cutoff);
+  return result.changes;
+}
+
 /** 重啟恢復 - 將 DB 中未完成的排程重新登記 job */
 export function recoverPendingSchedules(): void {
   const db = getDatabase();
