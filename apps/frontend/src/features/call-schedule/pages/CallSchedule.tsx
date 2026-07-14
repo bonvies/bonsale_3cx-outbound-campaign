@@ -41,9 +41,6 @@ import { fetchBonsaleCompany } from '../../outbound-campaign/api/Bonsale'
 const PAGE_SIZE = 10
 
 function formatLocalDate(isoString: string, timezoneIANA: string): string {
-  console.log('Original ISO String:', isoString); // --- DEBUG ---
-  console.log('Timezone IANA:', timezoneIANA); // --- DEBUG ---
-  console.log('Parsed Date:', toZonedTime(new Date(isoString), timezoneIANA)); // --- DEBUG ---
   return format(toZonedTime(new Date(isoString), timezoneIANA), 'yyyy/MM/dd HH:mm:ss')
 }
 
@@ -298,7 +295,7 @@ export default function CallSchedule() {
                     />
                   </TableCell>
                   <TableCell align='center'>{row.retryCount != null ? `${row.retryCount}/${row.maxRetries}` : '-'}</TableCell>
-                  <TableCell align='center'>{row.callRecord || '-'}</TableCell>
+                  <TableCell align='center'>{row.callRecord ? formatLocalDate(row.callRecord, timezoneIANA) : '-'}</TableCell>
                   <TableCell align='center'>{row.notes || '-'}</TableCell>
                   <TableCell align='center'>
                     <Stack direction='row' justifyContent='center'>
