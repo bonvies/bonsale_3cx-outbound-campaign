@@ -22,6 +22,9 @@ export class WebSocketManager {
   private lastMessageTime: number = Date.now();
   private isReconnecting: boolean = false;
   private reconnectAttempts: number = 0;
+  // 區分「主動關閉（disconnect，如 token 刷新換線）」與「意外斷線」：
+  // 兩者的 close code 都可能是 1006，只有意外斷線需要自動重連
+  private intentionalClose: boolean = false;
   
   private readonly options: WebSocketManagerOptions & {
     heartbeatInterval: number;
@@ -44,6 +47,7 @@ export class WebSocketManager {
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        this.intentionalClose = false;
         console.log(`嘗試連接到 WebSocket: ${this.options.url}`);
         
         this.ws = new WebSocket(this.options.url, {
@@ -94,11 +98,11 @@ export class WebSocketManager {
             this.callbacks.onError(error);
           }
           
-          // 如果不是在重連過程中，就嘗試重連
-          if (!this.isReconnecting) {
-            this.handleConnectionLost();
-          } else {
+          // 如果不是主動關閉、也不是在重連過程中，就嘗試重連
+          if (this.isReconnecting) {
             reject(new Error(`WebSocket connection failed: ${error.message}`));
+          } else if (!this.intentionalClose) {
+            this.handleConnectionLost();
           }
         });
 
@@ -111,12 +115,13 @@ export class WebSocketManager {
           if (this.callbacks.onClose) {
             this.callbacks.onClose(code, reason);
           }
-          
-          // 如果是異常關閉（1006）且不是正在重連，則嘗試重連
-          // if (code === 1006 && !this.isReconnecting) {
-          //   console.warn('檢測到異常關閉（1006），將嘗試重新連接');
-          //   this.handleConnectionLost();
-          // }
+
+          // 意外斷線（非 disconnect() 主動關閉、非重連流程中）才自動重連。
+          // 不限定 code === 1006：1001/1011 等其他意外 code 一樣需要重連。
+          if (!this.intentionalClose && !this.isReconnecting) {
+            console.warn(`檢測到異常關閉（${code}），將嘗試重新連接`);
+            this.handleConnectionLost();
+          }
         });
 
       } catch (error) {
@@ -128,6 +133,8 @@ export class WebSocketManager {
 
   async disconnect(): Promise<void> {
     return new Promise((resolve) => {
+      // 標記為主動關閉：close handler 看到此旗標就不會觸發自動重連
+      this.intentionalClose = true;
       // 清除心跳機制
       this.clearHeartbeat();
       this.isReconnecting = false;
