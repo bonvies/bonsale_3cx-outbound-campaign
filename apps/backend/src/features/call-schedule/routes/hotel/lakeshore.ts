@@ -3,6 +3,8 @@ import { fromZonedTime } from 'date-fns-tz';
 import { getFiasConn } from '../../util/fiasConnectionStore';
 import { getSiteTimezone } from '../../util/timezone';
 import { checkin, checkout, update, TollAllow } from '../../services/api/freeSwitchPmsApi';
+import fiasHandler from '../../components/fiasHandler';
+import { FiasConn } from '../../types/fias/fiasTypes';
 import lakeshoreRoomNumbers from './lakeshoreRoomNumbers.json';
 
 // 煙波飯店（Lakeshore）房號清單，飯店提供，用於驗證房務系統推送的 roomno 是否存在
@@ -255,8 +257,22 @@ router.post('/update', async (req: Request, res: Response) => {
 });
 
 // POST /api/v1/lakeshore/test-fias-result
-// 測試用：手動透過現有 FIAS TCP 連線送一筆 CA（電話費）給 PMS，確認通道是否暢通
-// Body: { roomNum: string, duration?: string, amount?: string, phoneNumber?: string }
+//
+// 【方向】我方 → PMS（模擬「我方主動送出」的訊息，例如 PS 電話計費）。
+// 【做法】完全不解析、不驗證內容，直接把 message 原封不動透過現有的 FIAS TCP 連線
+//         （getFiasConn()）送出去，交給 conn.send() 自動包上 STX/ETX 信封後送出。
+// 【用途】確認 FIAS TCP 連線本身是否還活著、能不能正常送出資料（純粹的通道健檢），
+//         不會觸發我方任何業務邏輯（不會經過 fiasHandler.ts）。
+// 【前提】必須已經有一條建立好的 FIAS 連線（不管是我方當 server 被 PMS 連進來，
+//         還是我方當 client 連到 PMS），否則 getFiasConn() 回傳 null，回 503。
+// 【風險】訊息會真的送到當前連線的另一端。如果連線對象是真實 PMS（例如正式環境
+//         連著煙波的 Protel），送出格式不對的訊息可能讓對方系統誤判（先前就發生過
+//         誤送 WC 被 Protel 當成真的取消叫醒、多記一筆「Deleted from room X」的案例，
+//         詳見 docs/FIAS_LAKESHORE_TEST_LOG.md）。不要用來測試 GI/GO（check-in/
+//         check-out）——那兩種是規格上「PMS 送給我方」的方向，送反了對面不會如預期反應，
+//         要測 check-in/check-out 請用下面的 test-fias-message。
+// Body: { message: string }，例如 "PS|RN0330|PTC|TA500|DA260709|TI155638|..."（原始封包內容，
+//        不含 STX/ETX，conn.send() 會自動加上）
 router.post('/test-fias-result', (req: Request, res: Response) => {
   const {
     message,
@@ -276,6 +292,67 @@ router.post('/test-fias-result', (req: Request, res: Response) => {
   conn.send(message);
   console.log(`[Lakeshore] test-fias-result sent: ${message}`);
   res.json({ success: true, sent: message });
+});
+
+// POST /api/v1/lakeshore/test-fias-message
+//
+// 【方向】PMS → 我方（模擬「PMS 送進來」的訊息，例如 GI/GO/RE/WR...），跟上面
+//         test-fias-result（我方送出去）方向完全相反，兩者不要搞混。
+// 【做法】不碰任何 TCP 連線（不需要真的連著 PMS，getFiasConn() 是否有值都無關），
+//         直接把 message 解析成 { type, fields }（規則跟 fias.ts/fiasClient.ts 收到
+//         真實封包時一致：用 '|' 切割，第一段是訊息類型，其餘每段前 2 字元是欄位
+//         代碼、其後是值），然後直接呼叫正式的 fiasHandler(msg, conn) —— 跟真的
+//         收到 PMS 訊息時走的是同一個函式、同一條程式碼路徑，不是另外模擬一套。
+// 【用途】驗證我方收到特定業務訊息後的處理邏輯是否正確，尤其是 GI/GO（check-in/
+//         check-out）：呼叫這個 API 就會真的觸發 fiasHandler.ts 的 case 'GI'/'GO'，
+//         進而呼叫 freeSwitchPmsApi.ts 的 checkin()/checkout()。
+// 【風險】checkin()/checkout() 會打真的 FREESWITCH_PMS_API_URL（見 .env），對訊息裡
+//         RN 指定的房號分機做真實的 caller ID／通話權限異動，不是假的模擬回應。
+//         但這個過程完全不會碰到 Protel PMS 本身或真實 FIAS TCP 連線，只會影響
+//         FreeSwitch/FusionPBX 那一端的分機設定，即使誤送也不會弄出假訂房。
+// 【不驗證的部分】不會走 LS/LD/LR/LA 握手（GI/GO/RE 等業務記錄本來就不需要），
+//         也不驗證訊息是否符合 fiasLinkProtocol.ts 宣告的欄位範圍——這裡只測
+//         fiasHandler.ts 收到訊息之後的業務邏輯，不測連線/握手層。
+// Body: { message: string }，例如 "GI|RN0330|G#3934582|GN測試|CS0|DA260709|TI141628|"
+//        （跟 test-fias-result 一樣是不含 STX/ETX 的原始封包內容，但這裡的方向和用途相反）
+router.post('/test-fias-message', async (req: Request, res: Response) => {
+  const { message } = req.body as { message?: string };
+
+  if (!message) {
+    res.status(400).json({ success: false, message: 'message is required' });
+    return;
+  }
+
+  const parts = message.split('|');
+  const type = parts[0];
+  if (!type) {
+    res.status(400).json({ success: false, message: 'invalid FIAS message: missing type' });
+    return;
+  }
+
+  const fields: Record<string, string> = {};
+  parts.slice(1).forEach((f) => {
+    fields[f.substring(0, 2)] = f.substring(2);
+  });
+
+  // GI/GO 等業務記錄依規格不需回覆，這裡只是攔截 handler 可能送出的內容方便觀察
+  // （例如測 WR 時會觸發 fiasWakeupResultHandler 相關流程）
+  const handlerSentMessages: string[] = [];
+  const conn: FiasConn = {
+    send(content: string): void {
+      handlerSentMessages.push(content);
+      console.log(`[Lakeshore] test-fias-message 觸發 handler 送出: ${content}`);
+    },
+  };
+
+  try {
+    console.log(`[Lakeshore] test-fias-message 收到: ${message} → 解析為`, { type, fields });
+    await fiasHandler({ type, fields }, conn);
+    res.json({ success: true, parsed: { type, fields }, handlerSentMessages });
+  } catch (error) {
+    console.error('[Lakeshore] POST /test-fias-message error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
 });
 
 export default router;
