@@ -163,6 +163,9 @@ router.post('/room/status', async (req: Request, res: Response) => {
 // Status Middleware JSON 規格》。最終效果一致：都是驗證後透過既有 FIAS TCP 連線
 // 送 RE|RN房號|RS代碼| 給 Protel PMS。
 //
+// 必填：domain_name、room_number、status、source_code；選填：source、time
+//（與主管確認過的欄位需求，2026-07-20）。
+//
 // TODO: 目前沒有做 IP 白名單檢核——來源是 Bonuc 的伺服器，不是 Protel，既有的
 // LAKESHORE_IP_WHITELIST（給 Protel 用）不適用。等拿到 Bonuc 實際來源 IP 後，
 // 補一組獨立的白名單環境變數（例如 LAKESHORE_ROOM_PHONE_STATUS_IP_WHITELIST）。
@@ -173,13 +176,12 @@ router.post('/room/status/phone', async (req: Request, res: Response) => {
 
     const { domain_name, room_number, status, source, source_code, time } = req.body;
 
-    // domain_name/source/source_code 只記錄稽核用途，不做驗證：source 依規格固定
-    // 是 room_phone、source_code 只是實際撥打的功能碼，真正的房況以 status 為準
+    // source 只記錄稽核用途，不做驗證：依規格固定是 room_phone，沒有分支邏輯
     console.log(`[Lakeshore] room/status/phone 來源資訊: domain_name=${domain_name} source=${source} source_code=${source_code}`);
 
-    // 檢核必填欄位
-    if (!room_number || !status || !time) {
-      res.status(400).json({ success: false, message: 'room_number, status and time are required' });
+    // 檢核必填欄位（time、source 為選填）
+    if (!domain_name || !room_number || !status || !source_code) {
+      res.status(400).json({ success: false, message: 'domain_name, room_number, status and source_code are required' });
       return;
     }
 
@@ -196,12 +198,15 @@ router.post('/room/status/phone', async (req: Request, res: Response) => {
       return;
     }
 
-    // time 格式與新鮮度驗證：跟 /room/status 的 statustime 格式完全一樣，重用同一套解析邏輯
-    const timezone = await getSiteTimezone();
-    const statusDate = parseStatusTime(time, timezone);
-    if (!statusDate || statusDate.getTime() < Date.now() - STATUSTIME_MAX_AGE_MS) {
-      res.status(400).json({ success: false, message: `invalid or stale time: ${time}` });
-      return;
+    // time 為選填欄位：沒給就跳過新鮮度檢查；有給才驗證格式與新鮮度
+    //（格式跟 /room/status 的 statustime 完全一樣，重用同一套解析邏輯）
+    if (time !== undefined && time !== null && time !== '') {
+      const timezone = await getSiteTimezone();
+      const statusDate = parseStatusTime(time, timezone);
+      if (!statusDate || statusDate.getTime() < Date.now() - STATUSTIME_MAX_AGE_MS) {
+        res.status(400).json({ success: false, message: `invalid or stale time: ${time}` });
+        return;
+      }
     }
 
     // 轉發給 Protel（FIAS TCP，RE/RS 記錄，fire-and-forget：即使 FIAS 未連線也仍回應成功，
