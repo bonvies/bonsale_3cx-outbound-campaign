@@ -29,6 +29,16 @@ const DEFAULT_TOLL_ALLOW: TollAllow = 'CS2';
 // 註明「Further values may be possible depending on the Hotels PMS setup」，
 // 與其猜測對照表，不如直接照煙波原始代碼送出，由飯店那邊自行決定代碼意義。
 
+// 客房電話撥打功能碼回報房況（見《Room Status Middleware JSON 規格》）：
+// **12 清潔完成 / **13 已檢查 / **14 清潔中，這裡的代碼對照表是 Bonuc 那份文件
+// 自己定義的建議值，跟上面 /room/status 直接使用煙波原始代碼（不轉換）是兩回事，
+// 不要混用。
+const ROOM_PHONE_STATUS_CODE_MAP: Record<string, string> = {
+  clean: '0',
+  inspected: '6',
+  cleaning: '5',
+};
+
 const RETCODE_MSG: Record<string, string> = {
   '000': '成功',
   '001': '[protel錯誤代碼]+[protel 回傳的msg]', // TODO 若能識別protel執行失敗，歸類於此retcode
@@ -141,6 +151,80 @@ router.post('/room/status', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[Lakeshore] POST /room/status error:', error);
     respond(res, '999', { error });
+  }
+});
+
+// POST /api/v1/lakeshore/room/status/phone
+//
+// 客房電話撥打房況功能碼（**12/**13/**14）的回報端點，來源是 Bonuc 的地端
+// middleware（FreeSWITCH dialplan → Lua → cdr_webhook → 這裡），不是煙波房務系統
+// 直接推送，所以跟上面的 /room/status 是兩支獨立端點：欄位命名、房況值型別（這裡
+// 是文字 clean/inspected/cleaning，不是數字代碼）、回應格式都不一樣，見《Room
+// Status Middleware JSON 規格》。最終效果一致：都是驗證後透過既有 FIAS TCP 連線
+// 送 RE|RN房號|RS代碼| 給 Protel PMS。
+//
+// TODO: 目前沒有做 IP 白名單檢核——來源是 Bonuc 的伺服器，不是 Protel，既有的
+// LAKESHORE_IP_WHITELIST（給 Protel 用）不適用。等拿到 Bonuc 實際來源 IP 後，
+// 補一組獨立的白名單環境變數（例如 LAKESHORE_ROOM_PHONE_STATUS_IP_WHITELIST）。
+router.post('/room/status/phone', async (req: Request, res: Response) => {
+  try {
+    console.log('[Lakeshore] ===== Incoming Room Phone Status Request =====');
+    console.log('[Lakeshore] Body:', JSON.stringify(req.body, null, 2));
+
+    const { domain_name, room_number, status, source, source_code, time } = req.body;
+
+    // domain_name/source/source_code 只記錄稽核用途，不做驗證：source 依規格固定
+    // 是 room_phone、source_code 只是實際撥打的功能碼，真正的房況以 status 為準
+    console.log(`[Lakeshore] room/status/phone 來源資訊: domain_name=${domain_name} source=${source} source_code=${source_code}`);
+
+    // 檢核必填欄位
+    if (!room_number || !status || !time) {
+      res.status(400).json({ success: false, message: 'room_number, status and time are required' });
+      return;
+    }
+
+    // 檢核 status 是否為有效值（見《Room Status Middleware JSON 規格》第三節）
+    const statusCode = ROOM_PHONE_STATUS_CODE_MAP[String(status)];
+    if (!statusCode) {
+      res.status(400).json({ success: false, message: `invalid status: ${status}` });
+      return;
+    }
+
+    // 檢核房號是否存在（room_number 全程當字串處理，避免 0301 被轉成數字 301）
+    if (!LAKESHORE_ROOM_NUMBERS.has(String(room_number))) {
+      res.status(400).json({ success: false, message: `unknown room_number: ${room_number}` });
+      return;
+    }
+
+    // time 格式與新鮮度驗證：跟 /room/status 的 statustime 格式完全一樣，重用同一套解析邏輯
+    const timezone = await getSiteTimezone();
+    const statusDate = parseStatusTime(time, timezone);
+    if (!statusDate || statusDate.getTime() < Date.now() - STATUSTIME_MAX_AGE_MS) {
+      res.status(400).json({ success: false, message: `invalid or stale time: ${time}` });
+      return;
+    }
+
+    // 轉發給 Protel（FIAS TCP，RE/RS 記錄，fire-and-forget：即使 FIAS 未連線也仍回應成功，
+    // 跟 /room/status 一致，呼叫端不需要知道 FIAS 連線狀態）
+    const conn = getFiasConn();
+    if (conn) {
+      conn.send(`RE|RN${room_number}|RS${statusCode}|`);
+      console.log(`[Lakeshore] 房況已轉發給 Protel：房間=${room_number} status=${status} → FIAS RS=${statusCode}`);
+    } else {
+      console.warn(`[Lakeshore] FIAS 未連線，房況無法轉發給 Protel（房間=${room_number} status=${status}）`);
+    }
+
+    res.json({
+      success: true,
+      message: 'room_status_updated',
+      domain_name,
+      room_number,
+      status,
+      status_code: Number(statusCode),
+    });
+  } catch (error) {
+    console.error('[Lakeshore] POST /room/status/phone error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
