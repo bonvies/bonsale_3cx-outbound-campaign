@@ -5,7 +5,8 @@ import { createCallSchedule, deleteCallSchedule, triggerImmediateCall } from '@/
 import { getSiteTimezone } from '@call-schedule/util/timezone';
 import { setFiasConn } from '@call-schedule/util/fiasConnectionStore';
 import { sendLinkHandshake, sendLinkEnd, sendLinkAlive } from '@call-schedule/util/fiasLinkProtocol';
-import { checkin, checkout, update, TollAllow } from '@call-schedule/services/api/freeSwitchPmsApi';
+import { TollAllow } from '@call-schedule/services/api/freeSwitchPmsApi';
+import { pmsExtensionService } from '@call-schedule/services/api/pmsExtensionService';
 
 /**
  * FIAS 協定沒有前端，PMS 送來的是飯店當地時間（TI/DT），
@@ -41,27 +42,6 @@ async function parseFiasDate(ti: string, dt?: string): Promise<Date> {
   }
 
   return fromZonedTime(new Date(year, month, day, hour, minute, 0), timezone);
-}
-
-/**
- * GI/GO（住房異動）的設備閘門。
- *
- * 為什麼需要這個判斷：
- * GI/GO 的下游動作是「更新分機的通話權限（toll_allow）與顯示名稱」，
- * 這是透過 FusionPBX 主機上的 FIAS Middleware（freeSwitchPmsApi，port 5001）實現的，
- * 屬於 FreeSwitch 架構專屬能力——NewRock / Yeastar 目前沒有對應的分機權限開關機制，
- * 所以收到 GI/GO 時只 log 略過，不視為錯誤。
- *
- * GI/GO 本身是 FIAS 標準記錄類型（Oracle Hospitality spec），任何飯店的 PMS 都可能送，
- * 不是煙波專屬；換新飯店時只要設備同為 FreeSwitch/FusionPBX（該主機需部署 cdr-webhook
- * Middleware），調整 .env 即可直接沿用，程式碼不用改。
- *
- * TODO: 若未來 NewRock / Yeastar 也需要入住/退房連動（例如分機鎖定），
- *       應比照 IPhoneApiService 的模式把 checkin/checkout 抽象成裝置介面，
- *       屆時移除此閘門、改由各裝置實作決定行為。
- */
-function isFreeSwitchEquipment(): boolean {
-  return process.env.TELEPHONE_EQUIPMENT === 'FreeSwitch';
 }
 
 // GI/GC 的 CS（Class of Service）欄位 → 我方 TollAllow 對照。
@@ -256,19 +236,15 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
         break;
       }
 
-
-      if (!isFreeSwitchEquipment()) {
-        console.log(`[FIAS] GI 收到入住通知（房間=${roomNumber}），但 TELEPHONE_EQUIPMENT 非 FreeSwitch，略過分機權限更新`);
-        break;
-      }
-
       const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
       const extension = extensionPrefix + roomNumber;
       const tollAllow = resolveTollAllowFromFiasCs(csCode, `GI（房間=${roomNumber}）`);
 
       // FIAS GI 不需回覆業務層 ACK，失敗只 log（不中斷 FIAS 連線）
-      const result = await checkin(extension, guestName?.trim() || `Room ${extension}`, tollAllow, guestLanguage);
-      if (result.success) {
+      const result = await pmsExtensionService.checkin(extension, guestName?.trim() || `Room ${extension}`, tollAllow, guestLanguage);
+      if (!result) {
+        console.log(`[FIAS] GI 收到入住通知（房間=${roomNumber}），但目前設備不支援分機權限更新，略過`);
+      } else if (result.success) {
         console.log(`[FIAS] GI check-in 完成：房間=${roomNumber} 分機=${extension} 房客=${guestName?.trim() || '(未提供)'} 權限=${tollAllow} 語系=${guestLanguage ?? '(未提供)'}`);
       } else {
         console.error(`[FIAS] GI check-in 失敗（房間=${roomNumber} 分機=${extension}）:`, result.error);
@@ -285,16 +261,13 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
         console.warn('[FIAS] GO 缺少房號（RN），忽略此訊息');
         break;
       }
-      if (!isFreeSwitchEquipment()) {
-        console.log(`[FIAS] GO 收到退房通知（房間=${roomNumber}），但 TELEPHONE_EQUIPMENT 非 FreeSwitch，略過分機權限更新`);
-        break;
-      }
-
       const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
       const extension = extensionPrefix + roomNumber;
 
-      const result = await checkout(extension);
-      if (result.success) {
+      const result = await pmsExtensionService.checkout(extension);
+      if (!result) {
+        console.log(`[FIAS] GO 收到退房通知（房間=${roomNumber}），但目前設備不支援分機權限更新，略過`);
+      } else if (result.success) {
         console.log(`[FIAS] GO check-out 完成：房間=${roomNumber} 分機=${extension}`);
       } else {
         console.error(`[FIAS] GO check-out 失敗（房間=${roomNumber} 分機=${extension}）:`, result.error);
@@ -321,16 +294,13 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
           console.log(`[FIAS] GC 純資料異動（無房號或無房客姓名，暫不處理）:`, JSON.stringify(msg.fields));
           break;
         }
-        if (!isFreeSwitchEquipment()) {
-          console.log(`[FIAS] GC 收到房客姓名異動通知（房間=${newRoomNumber}），但 TELEPHONE_EQUIPMENT 非 FreeSwitch，略過`);
-          break;
-        }
-
         const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
         const extension = extensionPrefix + newRoomNumber;
         const trimmedGuestName = guestName.trim();
-        const result = await update({ extension, effectiveCallerIdName: trimmedGuestName });
-        if (result.success) {
+        const result = await pmsExtensionService.update({ extension, effectiveCallerIdName: trimmedGuestName });
+        if (!result) {
+          console.log(`[FIAS] GC 收到房客姓名異動通知（房間=${newRoomNumber}），但目前設備不支援分機顯示名稱更新，略過`);
+        } else if (result.success) {
           console.log(`[FIAS] GC 房客姓名更新完成：房間=${newRoomNumber} 分機=${extension} 房客=${trimmedGuestName}`);
         } else {
           console.error(`[FIAS] GC 房客姓名更新失敗（房間=${newRoomNumber} 分機=${extension}）:`, result.error);
@@ -341,11 +311,6 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
         console.warn('[FIAS] GC 換房訊息缺少新房號（RN），忽略此訊息');
         break;
       }
-      if (!isFreeSwitchEquipment()) {
-        console.log(`[FIAS] GC 收到換房通知（${oldRoomNumber} → ${newRoomNumber}），但 TELEPHONE_EQUIPMENT 非 FreeSwitch，略過分機權限更新`);
-        break;
-      }
-
       const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
       const oldExtension = extensionPrefix + oldRoomNumber;
       const newExtension = extensionPrefix + newRoomNumber;
@@ -354,13 +319,15 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       // 換房 = 舊房退房 + 新房入住，依序執行。先收回舊房權限再開新房，
       // 避免退房前有一段時間新舊兩間房同時具備通話權限（例如舊房卡片還沒收回）。
       // 舊房退房失敗仍繼續處理新房入住——客人已經實際搬過去，不該因此打不了電話。
-      const checkoutResult = await checkout(oldExtension);
-      if (!checkoutResult.success) {
+      const checkoutResult = await pmsExtensionService.checkout(oldExtension);
+      if (checkoutResult && !checkoutResult.success) {
         console.error(`[FIAS] GC 換房：舊房退房失敗（房間=${oldRoomNumber} 分機=${oldExtension}）:`, checkoutResult.error);
       }
 
-      const checkinResult = await checkin(newExtension, guestName?.trim() || `Room ${newExtension}`, tollAllow, guestLanguage);
-      if (checkinResult.success) {
+      const checkinResult = await pmsExtensionService.checkin(newExtension, guestName?.trim() || `Room ${newExtension}`, tollAllow, guestLanguage);
+      if (!checkinResult) {
+        console.log(`[FIAS] GC 收到換房通知（${oldRoomNumber} → ${newRoomNumber}），但目前設備不支援分機權限更新，略過`);
+      } else if (checkinResult.success) {
         console.log(`[FIAS] GC 換房完成：${oldRoomNumber}（分機=${oldExtension}）→ ${newRoomNumber}（分機=${newExtension}）房客=${guestName?.trim() || '(未提供)'} 權限=${tollAllow} 語系=${guestLanguage ?? '(未提供)'}`);
       } else {
         console.error(`[FIAS] GC 換房：新房入住失敗（房間=${newRoomNumber} 分機=${newExtension}）:`, checkinResult.error);
@@ -390,18 +357,15 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
         console.log(`[FIAS] RE 收到（房間=${roomNumber}），未帶 DN/CS 欄位，忽略（目前只處理 DND 與 CS）`);
         break;
       }
-      if (!isFreeSwitchEquipment()) {
-        console.log(`[FIAS] RE 收到 DND/CS 通知（房間=${roomNumber}），但 TELEPHONE_EQUIPMENT 非 FreeSwitch，略過`);
-        break;
-      }
-
       const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
       const extension = extensionPrefix + roomNumber;
       const doNotDisturb = dnFlag === undefined ? undefined : dnFlag === 'Y';
       const tollAllow = csCode === undefined ? undefined : resolveTollAllowFromFiasCs(csCode, `RE（房間=${roomNumber}）`);
 
-      const result = await update({ extension, doNotDisturb, tollAllow });
-      if (result.success) {
+      const result = await pmsExtensionService.update({ extension, doNotDisturb, tollAllow });
+      if (!result) {
+        console.log(`[FIAS] RE 收到 DND/CS 通知（房間=${roomNumber}），但目前設備不支援分機更新，略過`);
+      } else if (result.success) {
         const dndPart = doNotDisturb === undefined ? '' : ` DND=${doNotDisturb}`;
         const tollAllowPart = tollAllow === undefined ? '' : ` 權限=${tollAllow}`;
         console.log(`[FIAS] RE 更新完成：房間=${roomNumber} 分機=${extension}${dndPart}${tollAllowPart}`);
