@@ -305,7 +305,8 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
     // ── GC：住客資料異動 / 換房（Guest Change / Room Move）──
     // 見 Oracle IFC8 FIAS Interface Specs「Guest Data Change notification」：
     // RN = 目的房號（換房時的新房），RO = 來源房號（換房時的舊房，「支援換房流程的系統必填」）。
-    // 有 RO 才代表這是真的換房；沒有 RO 只是單純資料異動（例如改房客姓名），非本次範圍不處理。
+    // 有 RO 才代表這是真的換房；沒有 RO 只是單純資料異動。目前只處理其中「改房客姓名」（GN）這種情況，
+    // 同步更新分機顯示名稱；其他欄位異動（沒有 GN 的情況）仍非本次範圍，不處理。
     case 'GC': {
       const newRoomNumber = msg.fields.RN;
       const oldRoomNumber = msg.fields.RO;
@@ -314,7 +315,26 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       const guestLanguage = msg.fields.GL; // Guest Language，原樣轉交 Middleware，不做代碼轉換
 
       if (!oldRoomNumber) {
-        console.log(`[FIAS] GC 純資料異動（非換房，暫不處理）:`, JSON.stringify(msg.fields));
+        // 純資料異動（非換房）：目前只處理房客姓名變更，透過 update() 只改分機顯示名稱，
+        // 不動 toll_allow/語系（那些沒有異動，維持原值，用 checkin() 反而會覆蓋成預設值）。
+        if (!newRoomNumber || !guestName?.trim()) {
+          console.log(`[FIAS] GC 純資料異動（無房號或無房客姓名，暫不處理）:`, JSON.stringify(msg.fields));
+          break;
+        }
+        if (!isFreeSwitchEquipment()) {
+          console.log(`[FIAS] GC 收到房客姓名異動通知（房間=${newRoomNumber}），但 TELEPHONE_EQUIPMENT 非 FreeSwitch，略過`);
+          break;
+        }
+
+        const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
+        const extension = extensionPrefix + newRoomNumber;
+        const trimmedGuestName = guestName.trim();
+        const result = await update({ extension, effectiveCallerIdName: trimmedGuestName });
+        if (result.success) {
+          console.log(`[FIAS] GC 房客姓名更新完成：房間=${newRoomNumber} 分機=${extension} 房客=${trimmedGuestName}`);
+        } else {
+          console.error(`[FIAS] GC 房客姓名更新失敗（房間=${newRoomNumber} 分機=${extension}）:`, result.error);
+        }
         break;
       }
       if (!newRoomNumber) {
