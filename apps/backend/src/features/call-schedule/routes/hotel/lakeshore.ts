@@ -243,7 +243,7 @@ router.post('/checkin', async (req: Request, res: Response) => {
 
     if (rejectIfNotWhitelisted(req, res)) return;
 
-    const { room_number, guest_name, toll_allow } = req.body;
+    const { room_number, guest_name, toll_allow, guest_language } = req.body;
     if (!room_number || !guest_name) {
       respond(res, '004', { message: 'room_number and guest_name are required' });
       return;
@@ -259,7 +259,8 @@ router.post('/checkin', async (req: Request, res: Response) => {
       resolvedTollAllow = String(toll_allow) as TollAllow;
     }
 
-    const result = await checkin(String(room_number), String(guest_name), resolvedTollAllow);
+    // guest_language 對應 FIAS GL（Guest Language）欄位，選填，原樣透傳給 Middleware
+    const result = await checkin(String(room_number), String(guest_name), resolvedTollAllow, guest_language !== undefined ? String(guest_language) : undefined);
     if (!result.success) {
       console.error(`[Lakeshore] checkin 失敗（房間=${room_number}）:`, result.error);
       respond(res, '999', { error: result.error });

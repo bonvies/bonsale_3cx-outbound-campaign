@@ -25,14 +25,18 @@ type PmsExtensionResponse = Record<string, unknown>;
 
 /**
  * 客人入住：更新 FusionPBX 分機的通話權限（toll_allow）與顯示名稱，見《整合說明書》5.1。
+ * guestLanguage 對應 FIAS GI/GC 記錄的 GL（Guest Language）欄位，主管已在 Middleware
+ * 端加入 guest_language 參數，原樣透傳、不做代碼轉換（見 Oracle IFC8 FIAS Interface
+ * Specs「GL - Guest Languages」）。
  */
-export async function checkin(roomNumber: string, guestName: string, tollAllow: TollAllow): Promise<ApiResult<PmsExtensionResponse>> {
+export async function checkin(roomNumber: string, guestName: string, tollAllow: TollAllow, guestLanguage?: string): Promise<ApiResult<PmsExtensionResponse>> {
   try {
     const response = await axios.post<PmsExtensionResponse>(`${API_URL}/pms/extension/checkin`, {
       domain_name: DOMAIN_NAME,
       room_number: roomNumber,
       guest_name: guestName,
       toll_allow: tollAllow,
+      guest_language: guestLanguage,
       reloadxml: true,
     }, { headers: HEADERS });
     console.log(`[freeSwitchPmsApi] checkin(房號=${roomNumber}) HTTP ${response.status}`, response.data);

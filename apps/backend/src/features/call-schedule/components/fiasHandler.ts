@@ -249,6 +249,7 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       const roomNumber = msg.fields.RN;
       const guestName = msg.fields.GN; // 可能缺漏，缺漏時交給 Middleware 預設為 Room <分機>
       const csCode = msg.fields.CS;    // Class of Service，見上方 resolveTollAllowFromFiasCs 說明
+      const guestLanguage = msg.fields.GL; // Guest Language，原樣轉交 Middleware，不做代碼轉換
 
       if (!roomNumber) {
         console.warn('[FIAS] GI 缺少房號（RN），忽略此訊息');
@@ -266,9 +267,9 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       const tollAllow = resolveTollAllowFromFiasCs(csCode, `GI（房間=${roomNumber}）`);
 
       // FIAS GI 不需回覆業務層 ACK，失敗只 log（不中斷 FIAS 連線）
-      const result = await checkin(extension, guestName?.trim() || `Room ${extension}`, tollAllow);
+      const result = await checkin(extension, guestName?.trim() || `Room ${extension}`, tollAllow, guestLanguage);
       if (result.success) {
-        console.log(`[FIAS] GI check-in 完成：房間=${roomNumber} 分機=${extension} 房客=${guestName?.trim() || '(未提供)'} 權限=${tollAllow}`);
+        console.log(`[FIAS] GI check-in 完成：房間=${roomNumber} 分機=${extension} 房客=${guestName?.trim() || '(未提供)'} 權限=${tollAllow} 語系=${guestLanguage ?? '(未提供)'}`);
       } else {
         console.error(`[FIAS] GI check-in 失敗（房間=${roomNumber} 分機=${extension}）:`, result.error);
       }
@@ -310,6 +311,7 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       const oldRoomNumber = msg.fields.RO;
       const guestName = msg.fields.GN;
       const csCode = msg.fields.CS;
+      const guestLanguage = msg.fields.GL; // Guest Language，原樣轉交 Middleware，不做代碼轉換
 
       if (!oldRoomNumber) {
         console.log(`[FIAS] GC 純資料異動（非換房，暫不處理）:`, JSON.stringify(msg.fields));
@@ -337,9 +339,9 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
         console.error(`[FIAS] GC 換房：舊房退房失敗（房間=${oldRoomNumber} 分機=${oldExtension}）:`, checkoutResult.error);
       }
 
-      const checkinResult = await checkin(newExtension, guestName?.trim() || `Room ${newExtension}`, tollAllow);
+      const checkinResult = await checkin(newExtension, guestName?.trim() || `Room ${newExtension}`, tollAllow, guestLanguage);
       if (checkinResult.success) {
-        console.log(`[FIAS] GC 換房完成：${oldRoomNumber}（分機=${oldExtension}）→ ${newRoomNumber}（分機=${newExtension}）房客=${guestName?.trim() || '(未提供)'} 權限=${tollAllow}`);
+        console.log(`[FIAS] GC 換房完成：${oldRoomNumber}（分機=${oldExtension}）→ ${newRoomNumber}（分機=${newExtension}）房客=${guestName?.trim() || '(未提供)'} 權限=${tollAllow} 語系=${guestLanguage ?? '(未提供)'}`);
       } else {
         console.error(`[FIAS] GC 換房：新房入住失敗（房間=${newRoomNumber} 分機=${newExtension}）:`, checkinResult.error);
       }
