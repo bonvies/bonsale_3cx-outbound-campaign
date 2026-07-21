@@ -86,11 +86,11 @@ function handleCallResult(payload: CallResultPayload): void {
   }
 
   if (result === 'answered') {
-    handleAnswer(extension);
+    handleAnswer(extension, request_id);
   } else {
     // answered 以外（未接、忙線、失敗等）一律走重試邏輯；
     // 分機不在 pendingCalls 追蹤中時（例如 make_call 打的非叫醒電話）為 no-op
-    handleBye(extension).catch(err =>
+    handleBye(extension, request_id).catch(err =>
       console.error('[FreeSwitchMonitor] handleBye error:', err)
     );
   }

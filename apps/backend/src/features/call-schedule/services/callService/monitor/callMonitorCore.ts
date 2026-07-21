@@ -11,6 +11,7 @@ type PendingCall = {
   scheduleId: string;
   extension: string;
   from: string;
+  callId?: string;  // 各設備正規化後的通話識別碼（見 phoneApiService.ts ApiResult.callId），供精準比對用（見下方 dequeueCall 說明）
   retryCount: number;
   maxRetries: number;
   retryIntervalMs: number;
@@ -20,6 +21,7 @@ export type RegisterCallOptions = {
   scheduleId: string;
   extension: string;   // to（被叫分機）
   from: string;        // from（主叫分機）
+  callId?: string;
   retryCount?: number;
   maxRetries: number;
   retryIntervalMs: number;
@@ -41,10 +43,23 @@ function peekCall(ext: string): PendingCall | undefined {
   return pendingCalls.get(ext)?.[0];
 }
 
-function dequeueCall(ext: string): PendingCall | undefined {
+// callId 有帶值時（目前只有 FreeSwitch 經 phoneApiService 正規化提供，見 device/freeSwitch.ts）
+// 精準比對佇列裡對應的那一筆，而不是照隊首 FIFO 猜測——避免佇列裡卡著一筆從未收到 CDR 回呼的
+// 舊通話時，後面真正的事件被誤配對到舊的 scheduleId 上（2026-07-21 煙波房間 0323 事故：真正
+// 接聽的通話被誤判給前一天卡住的舊 job，當天的 job 反而永遠停在 CALLING，事後又被誤判成未接聽
+// 而重打）。callId 沒帶值時（NewRock/Yeastar 的事件只有分機號碼，沒有單通電話的識別碼）維持
+// 原本的 FIFO 隊首邏輯。
+function dequeueCall(ext: string, callId?: string): PendingCall | undefined {
   const queue = pendingCalls.get(ext);
   if (!queue || queue.length === 0) return undefined;
-  const call = queue.shift();
+
+  let index = 0;
+  if (callId) {
+    index = queue.findIndex(c => c.callId === callId);
+    if (index === -1) return undefined;
+  }
+
+  const [call] = queue.splice(index, 1);
   if (queue.length === 0) pendingCalls.delete(ext);
   return call;
 }
@@ -93,9 +108,12 @@ export function handleRing(ext: string): void {
   updateStatus(call.scheduleId, 'RINGING');
 }
 
-export function handleAnswer(ext: string): void {
-  const call = dequeueCall(ext);
-  if (!call) return;
+export function handleAnswer(ext: string, callId?: string): void {
+  const call = dequeueCall(ext, callId);
+  if (!call) {
+    if (callId) console.warn(`[CallMonitor] ANSWER ext=${ext} callId=${callId} 找不到對應的監控紀錄，忽略`);
+    return;
+  }
   console.log(`[CallMonitor] 📞 ANSWER ext=${ext} scheduleId=${call.scheduleId}`);
   updateStatus(call.scheduleId, 'ANSWERED', new Date().toISOString());
   notifyCallResult({ scheduleId: call.scheduleId, extension: ext, finalStatus: 'ANSWERED', callRecord: new Date().toISOString() });
@@ -107,9 +125,12 @@ export function clearPendingCall(ext: string): void {
   dequeueCall(ext);
 }
 
-export async function handleBye(ext: string): Promise<void> {
-  const call = dequeueCall(ext);
-  if (!call) return;
+export async function handleBye(ext: string, callId?: string): Promise<void> {
+  const call = dequeueCall(ext, callId);
+  if (!call) {
+    if (callId) console.warn(`[CallMonitor] BYE ext=${ext} callId=${callId} 找不到對應的監控紀錄，忽略`);
+    return;
+  }
 
   console.log(
     `[CallMonitor] ☎️ BYE (未接聽) ext=${ext} scheduleId=${call.scheduleId} retryCount=${call.retryCount}/${call.maxRetries}`
@@ -150,6 +171,7 @@ export async function handleBye(ext: string): Promise<void> {
           scheduleId: call.scheduleId,
           extension: ext,
           from: call.from,
+          callId: result.callId,
           retryCount: nextRetryCount,
           maxRetries: call.maxRetries,
           retryIntervalMs: call.retryIntervalMs,
@@ -168,10 +190,10 @@ export async function handleBye(ext: string): Promise<void> {
 // ─────────────────────────────────────────────
 
 export function registerCall(opts: RegisterCallOptions): void {
-  const { scheduleId, extension, from, retryCount = 0, maxRetries, retryIntervalMs } = opts;
-  enqueueCall({ scheduleId, extension, from, retryCount, maxRetries, retryIntervalMs });
+  const { scheduleId, extension, from, callId, retryCount = 0, maxRetries, retryIntervalMs } = opts;
+  enqueueCall({ scheduleId, extension, from, callId, retryCount, maxRetries, retryIntervalMs });
   console.log(
-    `✍️ [CallMonitor] 已登記監控 scheduleId=${scheduleId} ext=${extension} from=${from} retry=${retryCount}/${maxRetries} retryIntervalMs=${retryIntervalMs}`
+    `✍️ [CallMonitor] 已登記監控 scheduleId=${scheduleId} ext=${extension} from=${from} callId=${callId ?? '(無)'} retry=${retryCount}/${maxRetries} retryIntervalMs=${retryIntervalMs}`
   );
 }
 

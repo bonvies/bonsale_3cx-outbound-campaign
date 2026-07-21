@@ -114,7 +114,7 @@ function scheduleCallJob(
         return;
       }
       db.prepare(`UPDATE call_schedules SET callStatus = 'CALLING' WHERE id = ?`).run(id);
-      registerCall({ scheduleId: id, extension, from: fromExtension, maxRetries: maxRetriesNum, retryIntervalMs });
+      registerCall({ scheduleId: id, extension, from: fromExtension, callId: result.callId, maxRetries: maxRetriesNum, retryIntervalMs });
     } catch (err) {
       console.error(`[CallScheduleService] Job execution failed for ${id}:`, err);
       db.prepare(`UPDATE call_schedules SET callStatus = 'ERROR' WHERE id = ?`).run(id);
@@ -248,7 +248,7 @@ export async function triggerImmediateCall(params: TriggerImmediateCallParams): 
     return newId;
   }
 
-  registerCall({ scheduleId: newId, extension, from: fromExtension, maxRetries: maxRetriesNum, retryIntervalMs });
+  registerCall({ scheduleId: newId, extension, from: fromExtension, callId: result.callId, maxRetries: maxRetriesNum, retryIntervalMs });
   return newId;
 }
 

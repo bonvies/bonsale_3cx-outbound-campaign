@@ -10,6 +10,11 @@ export interface ApiResult<T> {
   success: boolean;
   data?: T;
   error?: unknown;
+  // 供 callMonitorCore 的 pendingCalls 精準比對用（見 dequeueCall）。每個設備的通話結果回報
+  // 帶的識別碼欄位名稱、有無都不一樣（例如 FreeSwitch 是 request_id），因此不在這裡假設任何
+  // 協定細節，由各 IPhoneApiService 實作自行把自己的識別碼正規化填進這個共用欄位；沒有對應
+  // 識別碼的設備（NewRock/Yeastar）就留空，callMonitorCore 會自動退回 FIFO 比對。
+  callId?: string;
 }
 
 export interface IPhoneApiService {
