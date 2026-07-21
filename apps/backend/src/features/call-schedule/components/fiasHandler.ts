@@ -347,37 +347,44 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
     }
 
     // ── RE：分機設備狀態（Room Equipment）──────
-    // 見 Oracle IFC8 FIAS Interface Specs「RE - Room equipment status」：這裡只處理
-    // DN（Do-Not-Disturb，From PMS）方向。RS（我方主動回報房況給 Protel）走的是
-    // routes/hotel/lakeshore.ts 的 /room/status，跟這裡收到的 RE 是完全不同流向，不會衝突。
-    // 純轉發：DND 開啟後的實際擋話行為由 FreeSwitch/FusionPBX middleware 負責，我方不做判斷。
-    // 註：規格上 CS 欄位也可能透過 RE 單獨送達（不經過 GI/GC），目前尚未確認 Protel 是否採此模式，暫不處理。
+    // 見 Oracle IFC8 FIAS Interface Specs「RE - Room equipment status」：這裡處理
+    // DN（Do-Not-Disturb，From PMS）與 CS（Class of Service）兩個獨立方向。RS（我方主動
+    // 回報房況給 Protel）走的是 routes/hotel/lakeshore.ts 的 /room/status，跟這裡收到的 RE
+    // 是完全不同流向，不會衝突。純轉發：DND 開啟後的實際擋話行為由 FreeSwitch/FusionPBX
+    // middleware 負責，我方不做判斷。
+    // 註：實測證實 Protel 會透過 RE 單獨送 CS（不隨 GI/GC 一起來，見 2026-07-21 煙波客戶 log：
+    // RE 帶 CS3 但無 DN，若整包忽略會導致分機權限停留在舊值，房客打不出電話）。
+    // 因此 DN 與 CS 各自獨立判斷、互不影響——只要任一欄位有值就呼叫 update()。
     case 'RE': {
       const roomNumber = msg.fields.RN;
       const dnFlag = msg.fields.DN; // Y/N
+      const csCode = msg.fields.CS; // Class of Service，見上方 resolveTollAllowFromFiasCs 說明
 
       if (!roomNumber) {
         console.warn('[FIAS] RE 缺少房號（RN），忽略此訊息');
         break;
       }
-      if (dnFlag === undefined) {
-        console.log(`[FIAS] RE 收到（房間=${roomNumber}），未帶 DN 欄位，忽略（目前只處理 DND）`);
+      if (dnFlag === undefined && csCode === undefined) {
+        console.log(`[FIAS] RE 收到（房間=${roomNumber}），未帶 DN/CS 欄位，忽略（目前只處理 DND 與 CS）`);
         break;
       }
       if (!isFreeSwitchEquipment()) {
-        console.log(`[FIAS] RE 收到 DND 通知（房間=${roomNumber}），但 TELEPHONE_EQUIPMENT 非 FreeSwitch，略過`);
+        console.log(`[FIAS] RE 收到 DND/CS 通知（房間=${roomNumber}），但 TELEPHONE_EQUIPMENT 非 FreeSwitch，略過`);
         break;
       }
 
       const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
       const extension = extensionPrefix + roomNumber;
-      const doNotDisturb = dnFlag === 'Y';
+      const doNotDisturb = dnFlag === undefined ? undefined : dnFlag === 'Y';
+      const tollAllow = csCode === undefined ? undefined : resolveTollAllowFromFiasCs(csCode, `RE（房間=${roomNumber}）`);
 
-      const result = await update({ extension, doNotDisturb });
+      const result = await update({ extension, doNotDisturb, tollAllow });
       if (result.success) {
-        console.log(`[FIAS] RE DND 更新完成：房間=${roomNumber} 分機=${extension} DND=${doNotDisturb}`);
+        const dndPart = doNotDisturb === undefined ? '' : ` DND=${doNotDisturb}`;
+        const tollAllowPart = tollAllow === undefined ? '' : ` 權限=${tollAllow}`;
+        console.log(`[FIAS] RE 更新完成：房間=${roomNumber} 分機=${extension}${dndPart}${tollAllowPart}`);
       } else {
-        console.error(`[FIAS] RE DND 更新失敗（房間=${roomNumber} 分機=${extension}）:`, result.error);
+        console.error(`[FIAS] RE 更新失敗（房間=${roomNumber} 分機=${extension}）:`, result.error);
       }
       break;
     }
