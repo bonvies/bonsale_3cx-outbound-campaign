@@ -66,14 +66,22 @@ function respond(res: Response, retcode: string, data?: unknown): void {
   res.status(RETCODE_HTTP_STATUS[retcode] ?? 500).json({ retcode, msg: RETCODE_MSG[retcode], data });
 }
 
-// 檢核白名單
+// Node 沒有明確指定只監聽 IPv4 時是雙棧監聽，req.ip 對 IPv4 連線會回傳
+// IPv4-mapped IPv6 格式（例如 ::ffff:172.16.0.51），跟白名單裡常見的純 IPv4
+// 寫法（172.16.0.51）對不上——2026-07-21 煙波房務系統 API 呼叫證實過這個問題，
+// 白名單設定正確、IP 也對，仍被擋下。比對前先去掉這個前綴。
+function normalizeIp(ip: string): string {
+  return ip.startsWith('::ffff:') ? ip.slice('::ffff:'.length) : ip;
+}
+
+// 檢核白名單（完全相等比對，不能改成子字串 includes——會被子字串包含關係繞過白名單）
 function isWhitelisted(ip: string): boolean {
   const whitelist = (process.env.LAKESHORE_IP_WHITELIST ?? '')
     .split(',')
     .map(s => s.trim())
     .filter(Boolean);
   if (whitelist.length === 0) return true;
-  return whitelist.includes(ip);
+  return whitelist.includes(normalizeIp(ip));
 }
 
 // 白名單檢核 + 拒絕時的回應，回傳 true 代表已回應、呼叫端應立即 return
