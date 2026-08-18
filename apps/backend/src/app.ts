@@ -539,7 +539,7 @@ httpServer.listen(PORT, async () => {
       console.log(`🔌 WebSocket server is running on port ${PORT}`);
       console.log(`🖥️ Bonsale WebHook WebSocket is available on port ${PORT}/api/bonsale/webhook-ws`);
     }
-    console.log(`ℹ️ Version: v3.0.1`);
+    console.log(`ℹ️ Version: v3.0.2`);
 
   } catch (error) {
     console.error('啟動服務器失敗:', error);
