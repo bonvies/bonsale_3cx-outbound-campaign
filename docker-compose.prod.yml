@@ -13,7 +13,7 @@ services:
     depends_on:
       - redis
     volumes:
-      - sqlite_data:/app/data
+      - sqlite_data:/app/apps/backend/data
     networks:
       - bonsale-network
     restart: unless-stopped
