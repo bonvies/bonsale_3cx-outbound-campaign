@@ -278,8 +278,8 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
     // ── GC：住客資料異動 / 換房（Guest Change / Room Move）──
     // 見 Oracle IFC8 FIAS Interface Specs「Guest Data Change notification」：
     // RN = 目的房號（換房時的新房），RO = 來源房號（換房時的舊房，「支援換房流程的系統必填」）。
-    // 有 RO 才代表這是真的換房；沒有 RO 只是單純資料異動。目前只處理其中「改房客姓名」（GN）這種情況，
-    // 同步更新分機顯示名稱；其他欄位異動（沒有 GN 的情況）仍非本次範圍，不處理。
+    // 有 RO 才代表這是真的換房；沒有 RO 只是單純資料異動。資料異動目前同步房客姓名（GN）與語系（GL）
+    // 到分機；其他欄位（例如 CS，Protel 另外會透過 RE 單獨送）不在此處理。
     case 'GC': {
       const newRoomNumber = msg.fields.RN;
       const oldRoomNumber = msg.fields.RO;
@@ -288,22 +288,32 @@ export default async function fiasHandler(msg: FiasMessage, conn: FiasConn): Pro
       const guestLanguage = msg.fields.GL; // Guest Language，原樣轉交 Middleware，不做代碼轉換
 
       if (!oldRoomNumber) {
-        // 純資料異動（非換房）：目前只處理房客姓名變更，透過 update() 只改分機顯示名稱，
-        // 不動 toll_allow/語系（那些沒有異動，維持原值，用 checkin() 反而會覆蓋成預設值）。
-        if (!newRoomNumber || !guestName?.trim()) {
-          console.log(`[FIAS] GC 純資料異動（無房號或無房客姓名，暫不處理）:`, JSON.stringify(msg.fields));
+        // 純資料異動（非換房）：GC 每次都重送整份房客資料（不是只帶有異動的欄位），無法從
+        // 欄位判斷這次改了什麼，所以姓名與語系有值就一併同步（同值覆寫無副作用）。實測：
+        // 2026-10-13 煙波 0521 在 Protel 改語系 EN/JA，送來的就是這種沒有 RO 的 GC，先前只同步
+        // 姓名導致分機 pms_language 停在入住時的 ZH，morning call 一直播中文。
+        // 用 update() 而非 checkin()：checkin() 會連 toll_allow 一起覆寫，可能蓋掉 RE 單獨調整過的權限。
+        // 空字串一律視為未提供（JSON 序列化時 undefined 欄位會被省略，Middleware 維持原值），避免清掉既有設定。
+        const trimmedGuestName = guestName?.trim() || undefined;
+        const trimmedGuestLanguage = guestLanguage?.trim() || undefined;
+        if (!newRoomNumber || (!trimmedGuestName && !trimmedGuestLanguage)) {
+          console.log(`[FIAS] GC 純資料異動（無房號，或姓名與語系皆未提供，暫不處理）:`, JSON.stringify(msg.fields));
           break;
         }
         const extensionPrefix = process.env.FIAS_EXTENSION_PREFIX ?? '';
         const extension = extensionPrefix + newRoomNumber;
-        const trimmedGuestName = guestName.trim();
-        const result = await pmsExtensionService.update({ extension, effectiveCallerIdName: trimmedGuestName });
+        const result = await pmsExtensionService.update({
+          extension,
+          effectiveCallerIdName: trimmedGuestName,
+          guestLanguage: trimmedGuestLanguage,
+        });
+        const detail = `房客=${trimmedGuestName ?? '(未提供)'} 語系=${trimmedGuestLanguage ?? '(未提供)'}`;
         if (!result) {
-          console.log(`[FIAS] GC 收到房客姓名異動通知（房間=${newRoomNumber}），但目前設備不支援分機顯示名稱更新，略過`);
+          console.log(`[FIAS] GC 收到房客資料異動通知（房間=${newRoomNumber}），但目前設備不支援分機更新，略過`);
         } else if (result.success) {
-          console.log(`[FIAS] GC 房客姓名更新完成：房間=${newRoomNumber} 分機=${extension} 房客=${trimmedGuestName}`);
+          console.log(`[FIAS] GC 房客資料更新完成：房間=${newRoomNumber} 分機=${extension} ${detail}`);
         } else {
-          console.error(`[FIAS] GC 房客姓名更新失敗（房間=${newRoomNumber} 分機=${extension}）:`, result.error);
+          console.error(`[FIAS] GC 房客資料更新失敗（房間=${newRoomNumber} 分機=${extension} ${detail}）:`, result.error);
         }
         break;
       }

@@ -17,6 +17,7 @@ export interface IPmsExtensionService {
     effectiveCallerIdName?: string;
     effectiveCallerIdNumber?: string;
     doNotDisturb?: boolean;
+    guestLanguage?: string;
   }): Promise<ApiResult<PmsExtensionResponse>>;
 }
 
