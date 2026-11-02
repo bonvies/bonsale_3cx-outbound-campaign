@@ -10,14 +10,14 @@ pnpm install              # Install all dependencies
 pnpm dev                  # Run backend & frontend in dev mode
 pnpm backend              # Run backend only (Node.js on port 4020)
 pnpm frontend             # Run frontend only (Vite on port 4030)
-pnpm type-check           # TypeScript validation across all packages
+pnpm type-check           # TypeScript validation
 pnpm lint                 # ESLint check
 pnpm lint:fix             # ESLint with auto-fix
 ```
 
 ### Docker (Local Development)
 ```bash
-pnpm docker:up            # Start docker-compose (backend + frontend + redis)
+pnpm docker:up            # Start docker-compose (backend + frontend)
 pnpm docker:down          # Stop docker-compose
 docker-compose logs -f    # View live logs
 ```
@@ -31,268 +31,161 @@ pnpm clean                # Clean build artifacts
 
 ### Single Package Commands
 ```bash
-# Backend (apps/backend/)
-pnpm -F backend dev       # Backend dev server with auto-reload
-pnpm -F backend build     # Compile TypeScript to dist/
-
-# Frontend (apps/frontend/)
-pnpm -F frontend dev      # Frontend dev with HMR
-pnpm -F frontend build    # Production build
+pnpm -F @monorepo/backend dev     # Backend dev server with auto-reload
+pnpm -F @monorepo/backend build   # Compile TypeScript to dist/ (tsc && tsc-alias)
+pnpm -F call-schedule-dashboard dev
+pnpm -F call-schedule-dashboard build
 ```
 
-## Project Architecture
+## Project Overview
+
+**自動語音通知 / 飯店叫醒服務**：依排程撥打電話給指定分機，並與飯店 PMS 整合。
+
+1. **排程撥號**：排程存在 SQLite，時間到由 node-schedule 觸發撥號；未接聽可自動重試
+2. **電話設備抽象層**：NewRock / Yeastar / FreeSwitch 三種設備，用 `TELEPHONE_EQUIPMENT` 切換，程式碼不需改動
+3. **FIAS PMS 整合**：透過 TCP 與飯店 PMS 交換 FIAS 訊息（叫醒 WR/WA、入住退房、語系同步等）
+4. **客戶專屬路由**：依 `CLIENT_ID` 掛載客製化 HTTP API（目前有 `lakeshore` 煙波）
+5. **前端**：單頁排程管理介面（列表 / 新增 / 編輯 / 刪除 / 立即撥打）
+
+本 repo 由 `bonsale_3cx-outbound-campaign` 拆分出來，已移除 3CX 外播、Bonsale CRM、Redis 相關程式。
 
 ### Technology Stack
-- **Frontend**: React 19 + Vite + TypeScript + Material-UI 7
-- **Backend**: Node.js 18+ + Express + TypeScript + WebSocket (ws)
-- **Data**: Redis 7 (state & cache) + async-mutex (concurrency)
+- **Frontend**: React 19 + Vite + TypeScript + Material-UI 7 + SWR
+- **Backend**: Node.js 18+ + Express + TypeScript
+- **Data**: SQLite（`better-sqlite3`），檔案位於 `apps/backend/data/call_schedules.db`
+- **Scheduling**: `node-schedule`
 - **Build**: Turbo monorepo + pnpm workspaces
 - **Deployment**: Docker + Docker Compose + GCP Container Registry
 
 ### Monorepo Structure
 ```
-apps/backend/           # Express API server
-  - src/class/         # Core business logic (Project, ProjectManager, etc.)
-  - src/services/      # Redis, API integrations (3CX, Bonsale, xApi)
-  - src/routes/        # HTTP endpoints
-  - src/websockets/    # WebSocket connection handlers
-  - src/shared/        # Backend-only shared utilities (alias: @shared-local/*)
-  - src/features/
-    - outbound-campaign/   # 3CX 自動外播功能
-    - call-schedule/       # 自動語音通知功能
-      - services/api/      # Phone API 抽象層（IPhoneApiService）
-        - device/          # NewRock / Yeastar 實作
-      - services/monitor/  # Call Monitor 抽象層（ICallMonitorService）
-        - device/          # NewRock / Yeastar 監控實作
-      - services/          # callScheduleService, database
-      - routes/            # HTTP 路由
-      - types/             # 型別定義
+apps/backend/src/
+  app.ts                         # 入口：validateEnv → 掛路由 → listen → setupCallSchedule()
+  shared/
+    routes/config.ts             # GET /api/config/timezone
+    util/validateEnv.ts          # Joi 驗證所有環境變數（開機時一次列出缺漏）
+    util/patchConsole.ts         # console 加時間戳（必須是第一個 import）
+  features/call-schedule/
+    routes/
+      callSchedule.ts            # /api/call-schedule CRUD + immediate-call
+      hotel/lakeshore.ts         # /api/v1/lakeshore（CLIENT_ID=lakeshore 才掛載）
+    services/
+      database.ts                # SQLite schema 與 migration
+      callService/
+        callScheduleService.ts   # 排程核心（node-schedule）
+        phoneApiService.ts       # IPhoneApiService 抽象層，設備切換點
+        callMonitorService.ts    # ICallMonitorService 抽象層，監控切換點
+        device/                  # newRock / yeastar / freeSwitch 撥號實作
+        monitor/
+          callMonitorCore.ts     # 共用邏輯（pendingCalls、retry、answer/bye 判定）
+          callResultNotifier.ts  # 通話結果 handler 註冊（FIAS WA 回報等）
+          device/                # 各設備的通話狀態監控實作
+      api/                       # 各設備底層 API client、PMS 分機服務
+    components/
+      fiasHandler.ts             # FIAS 訊息分派
+      fiasWakeupResultHandler.ts # 叫醒結果回報 PMS（WA）
+    util/
+      fias.ts / fiasClient.ts    # FIAS TCP server / client
+      fiasLinkProtocol.ts        # FIAS link 協定（LS/LD/LR/LA）
+      timezone.ts                # getSiteTimezone()
 
-apps/frontend/         # React web dashboard
-  - src/components/    # React UI components
-  - src/pages/         # Page-level components
-  - src/router/        # React Router setup
-  - src/theme/         # Material-UI theme
-
-packages/shared-types/ # Shared TypeScript definitions
-  - ApiResponse<T>, User, Auth types
-  - WebSocket event types
+apps/frontend/src/
+  features/call-schedule/        # 排程頁面、對話框、API
+  shared/                        # Layout、Navbar、Router、theme、config API
 ```
-
-### High-Level Architecture
-
-This is a **real-time outbound campaign management system** integrating:
-1. **3CX Phone System**: WebSocket connection for live call monitoring/control
-2. **Bonsale CRM**: API integration for contact management and configurations
-3. **Campaign Dashboard**: Real-time UI for viewing/controlling active campaigns
-
-**Key Pattern**: The `Project` class (src/class/project.ts) is the heart of the system, managing a single campaign's full lifecycle:
-- 3CX WebSocket connection (connect → authenticate → listen for calls)
-- Call list processing and dialing
-- Call state tracking (ringing → connected → completed)
-- Bonsale CRM updates on call completion
-- Automatic recovery on connection loss
-
-The backend exposes this via WebSocket events, allowing the frontend to view/control projects in real-time.
-
-### State Management
-- **In-Memory**: Active Project instances maintain state during operation
-- **Redis**: Persistent storage of project state (survives restarts with `AUTO_RECOVER_ON_RESTART=true`)
-- **Bonsale**: CRM source of truth for contacts and call outcomes
-
-## Core Components to Know
-
-### Backend
-
-**`Project` class** (`src/class/project.ts`, ~95KB)
-- Manages a single outbound campaign lifecycle
-- Connects to 3CX, monitors calls, dials contacts, updates CRM
-- Complex state machine with concurrency control (mutex)
-- Implements: token refresh, call restrictions (time/extension), idle checks, auto-recovery
-
-**`ProjectManager`** (`src/class/projectManager.ts`)
-- Registry of active Project instances
-- Lifecycle operations: create, stop, remove, recover from Redis
-
-**`WebSocketManager`** (`src/class/webSocketManager.ts`)
-- Manages WebSocket server connections and message broadcasting
-- Two endpoints: main WS server + Bonsale webhook listener
-
-**`redis.ts`** (`src/services/redis.ts`)
-- Redis client initialization and cache operations
-- Persistence layer for project state
-
-**API Services** (`src/services/api/`)
-- `bonsale.ts`: Contact retrieval, campaign config
-- `callControl.ts`: 3CX call operations (dial, hangup, transfer)
-- `xApi.ts`: Token refresh from 3CX authentication
-
-**Call Schedule Feature** (`src/features/call-schedule/`)
-- **`phoneApiService.ts`**: `IPhoneApiService` 抽象層，根據 `TELEPHONE_EQUIPMENT` 環境變數切換設備
-  - `device/newRockApi.ts`: NewRock HTTP 1.0 XML API 實作
-  - `device/yeastarApi.ts`: Yeastar REST API + 自動 Token 刷新（斷網恢復）
-- **`callMonitorService.ts`**: `ICallMonitorService` 抽象層，切換通話監控實作
-  - `monitor/device/NewRockCallMonitorService.ts`: HTTP Server 接收 NewRock XML Push（port 4022）
-  - `monitor/device/YeastarCallMonitorService.ts`: WebSocket 訂閱 Yeastar CDR 事件（topic 30012）
-  - `monitor/callMonitorCore.ts`: 共用業務邏輯（pendingCalls、retry、handleAnswer/Bye）
-- **`callScheduleService.ts`**: 排程核心（node-schedule），讀 SQLite 排程並觸發撥號
-- **`database.ts`**: better-sqlite3，SQLite 資料庫操作
-
-**切換設備**：只需修改 `.env` 中的 `TELEPHONE_EQUIPMENT=NewRock|Yeastar`，程式碼層不需改動。
-
-### Frontend
-- **Router setup** determines page layout
-- **Real-time updates** via WebSocket message events
-- **Material-UI theme** in `src/theme/` for consistent styling
 
 ## Important Patterns & Conventions
 
-### Error Handling
-**Error Serialization Issue**: When Error objects are serialized to JSON, they lose properties (stack, name become empty).
-- Solution: Check `/docs/ERROR_HANDLING.md` for proper error handling
-- Use `error instanceof Error` checks and extract properties before serialization
-- Always wrap token refresh failures with proper error context
+### Startup Order (`app.ts`)
+1. `import './shared/util/patchConsole'` 必須是第一行（內含 `dotenv.config()`）
+2. 其餘模組靜態 import
+3. `validateEnv()`：缺漏或填錯會列出並 `process.exit(1)`
+4. 掛載路由 → 404 handler → error handler
+5. `app.listen` 後執行 `setupCallSchedule()`：DB → 設備 init → 恢復排程 → 啟動監控 → FIAS
 
-### WebSocket Protocol
-- **Format**: `{ event: string, payload: any }`
-- **Server responses**: Include `timestamp` in payload
-- **Event examples**: `startOutbound`, `stopOutbound`, `allProjects`
-- See `/docs/WEBSOCKET_FORMAT.md` for complete specification
+**模組載入時不可 throw**：call-schedule 模組是靜態 import，會在 `validateEnv()` 之前就被載入。模組頂層只能把 env 讀成常數，不能在載入時就因為 env 缺漏而 throw；需要驗證的邏輯放在函式裡延後執行（參考 `phoneApiService.ts` 的 `getDevice()`）。
 
-### Concurrency Control
-- `async-mutex` protects critical sections in Project class
-- Example: Token refresh and call state updates are mutex-protected
-- **Important**: Ensure all async operations within mutex blocks complete properly (avoid deadlocks)
+### Timezone
+- `SITE_TIMEZONE`（IANA，例如 `Asia/Taipei`）為**必填**，`validateEnv` 會驗證格式
+- DB 與 API 的 `date` 一律為 UTC ISO 8601（`Z` 結尾），顯示時才依 `SITE_TIMEZONE` 轉換
+- 前端透過 `GET /api/config/timezone` 取得時區
+- `LOG_TIMEZONE` 只影響 log 時間戳，與業務時區無關
 
-### Call Restrictions
-- **Time-based**: Campaign only dials during specified UTC time windows
-- **Extension cooldown**: Extensions have min interval between consecutive calls
-- **Cross-day ranges**: Restrictions can span midnight (e.g., 22:00-06:00)
+### Adding a New Phone Device
+1. `services/callService/device/` 實作 `IPhoneApiService`
+2. `services/callService/monitor/device/` 實作 `ICallMonitorService`
+3. 加入 `phoneApiService.ts` 與 `callMonitorService.ts` 的 device map
+4. `validateEnv.ts` 加入該設備的必填變數，並更新 `apps/backend/.env.example`
+
+### Adding a Customer-Specific Route
+在 `app.ts` 的 `switch (CLIENT_ID)` 加一個 case，路由檔放在 `routes/hotel/`。若需要非 FIAS 規格的客製化通話結果通知，在 `setupCallSchedule()` 另外 `registerCallResultHandler()`。
+
+### FIAS
+- `FIAS_MODE=server`（預設）：我方開 TCP server 等 PMS 連入（port `FIAS_PORT`，預設 4021）
+- `FIAS_MODE=client`：我方主動連 PMS（`FIAS_PMS_HOST` / `FIAS_PMS_PORT`）
+- `ENABLE_FIAS=false`：完全不開 TCP（Cloud Run 等單 port 環境）
+- 詳見 `docs/FIAS_INTEGRATION.md`
+
+### Concurrency
+Node.js 是單執行緒，但 `await` 之間其他事件仍可插入。`callMonitorCore.ts` 曾因同分機短時間內重疊來電而遺失通話結果（已改用佇列追蹤同分機的多通電話），修改 pendingCalls 相關邏輯前請先讀 `docs/CALL_SCHEDULE_PENDING_CALLS_RACE_CONDITION.md`。
 
 ### TypeScript Paths
-- `@/*` → Backend: `apps/backend/src/*`
-- `@shared/*` → Backend: `../../packages/shared-types/src/*`
-- `@shared-local/*` → Backend: `apps/backend/src/shared/*`
-- `@outbound/*` → Backend: `apps/backend/src/features/outbound-campaign/*`
-- `@call-schedule/*` → Backend: `apps/backend/src/features/call-schedule/*`
-- Frontend imports from `packages/shared-types` directly
+- `@/*` → `apps/backend/src/*`
+- `@call-schedule/*` → `apps/backend/src/features/call-schedule/*`
+- `@shared-local/*` → `apps/backend/src/shared/*`
+- Frontend：`@call-schedule` / `@shared`（見 `vite.config.ts`）
 
 **Production Build Note**: Path aliases are resolved at build time by `tsc-alias` (runs after `tsc`). The `build` script is `tsc && tsc-alias` — never just `tsc` alone, or aliases will remain unresolved in `dist/` and cause `Cannot find module` errors at runtime.
 
 ## Environment Configuration
 
-Create `.env` at root with:
-```
-# 3CX Integration
-HTTP_HOST_3CX=https://your-3cx-host:5015
-WS_HOST_3CX=wss://your-3cx-host:5015
+完整變數清單、必填條件與預設值以 **`apps/backend/.env.example`** 為準。
 
-# Application
-HTTP_PORT=4020
-NODE_ENV=development
+- `pnpm backend` 讀 `apps/backend/.env`
+- Docker Compose 讀專案根目錄的 `.env`
 
-# Bonsale CRM
-BONSALE_HOST=https://your-bonsale-host
-BONSALE_X_API_KEY=xxx
-BONSALE_X_API_SECRET=xxx
-
-# Redis
-REDIS_URL=redis://localhost:6379
-
-# Features
-AUTO_RECOVER_ON_RESTART=true
-IS_STARTIDLECHECK=true
-
-# Idle Check Intervals (ms)
-IDLE_CHECK_INTERVAL=300000
-MIN_IDLE_CHECK_INTERVAL=30000
-MAX_IDLE_CHECK_INTERVAL=300000
-IDLE_CHECK_BACKOFF_FACTOR=1.5
-
-# Feature Flags
-ENABLE_OUTBOUND_CAMPAIGN=true   # 自動外播功能
-ENABLE_CALL_SCHEDULE=true        # 自動語音通知 (Call Schedule)
-
-# ── Call Schedule 專屬（ENABLE_CALL_SCHEDULE=true 時必填）──
-# 電話設備選擇（必填，無預設值）
-TELEPHONE_EQUIPMENT=NewRock      # NewRock 或 Yeastar
-
-# 外播主叫分機號碼
-OM_CALL_FROM_EXTENSION=9038
-
-# NewRock 設定（TELEPHONE_EQUIPMENT=NewRock 時必填）
-# OM 事件監聽 Port（接收設備 Push 通知，僅 NewRock 使用）
-NEW_ROCK_API_MONITOR_PORT=4022
-NEW_ROCK_API_HOST=http://your-newrock-host
-NEW_ROCK_API_PATH=/xml
-
-# Yeastar 設定（TELEPHONE_EQUIPMENT=Yeastar 時必填）
-YEASTAR_API_HOST=https://your-yeastar-host
-YEASTAR_API_PATH=/openapi/v1.0
-YEASTAR_USERNAME=your-username
-YEASTAR_PASSWORD=your-password
+最少需要：
+```bash
+CLIENT_ID=demo
+SITE_TIMEZONE=Asia/Taipei
+TELEPHONE_EQUIPMENT=NewRock   # NewRock | Yeastar | FreeSwitch，並填入對應設備的必填變數
 ```
 
-## Development Workflow
+## Ports
 
-1. **Start development environment**: `pnpm docker:up` (backend + frontend + redis)
-2. **Or run individually**: `pnpm backend` + `pnpm frontend` in separate terminals
-3. **Watch changes**: Turbo caching auto-rebuilds dependencies
-4. **Check types**: `pnpm type-check` catches TypeScript errors early
-5. **Lint before commit**: Git hooks run `lint-staged` via Husky
-
-### Debugging Tips
-- **Backend logs**: Check `docker-compose logs backend` for real-time logs
-- **Redis state**: Use `redis-commander` (port 8081) to inspect Redis data
-- **Frontend console**: Browser DevTools > Console for client-side errors
-- **WebSocket events**: Monitor network tab for WebSocket frames
+| Port | 用途 |
+|------|------|
+| 4020 | Backend HTTP API |
+| 4021 | FIAS TCP server（`FIAS_MODE=server`） |
+| 4022 | NewRock 事件 Push 接收（`TELEPHONE_EQUIPMENT=NewRock`） |
+| 4030 | Frontend |
 
 ## Testing
 
 - Backend uses Jest (minimal test setup currently)
 - No dedicated frontend test suite yet
-- Focus on type safety (`pnpm type-check`) as primary quality gate
+- `pnpm type-check` + `pnpm lint` are the primary quality gates
 
 ## Deployment
 
-### Local Docker
+本機 `docker build` + `docker push`（不要用 `gcloud builds submit`，會上傳整個 source 目錄含 `.env`）：
 ```bash
-docker-compose up --build
+pnpm deploy:backend      # gcr.io/drvet-server-sysstore-bonvies/bonvies_call-schedule_backend:latest
+pnpm deploy:frontend     # gcr.io/drvet-server-sysstore-bonvies/bonvies_call-schedule_frontend:latest
 ```
-
-### Production (GCP)
-1. Build and push images to GCP Container Registry:
-   ```bash
-   docker build --platform linux/amd64 -f apps/backend/Dockerfile \
-     -t gcr.io/PROJECT/bonsale_3cx-outbound-campaign_backend:latest .
-   docker push gcr.io/PROJECT/bonsale_3cx-outbound-campaign_backend:latest
-   ```
-2. Deploy via GCP Cloud Run or Kubernetes using `docker-compose.prod.yml` as reference
-
-See `/README.md` for comprehensive deployment guide (in Chinese).
+VM 上以 `docker-compose.prod.yml` 拉取並啟動。SQLite 存在 `sqlite_data` volume（掛載於 `/app/apps/backend/data`），重建容器不會遺失排程。
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `apps/backend/src/app.ts` | Express app setup, route mounting, WebSocket initialization |
-| `apps/backend/src/class/project.ts` | Campaign lifecycle, 3CX integration, call processing |
-| `apps/backend/src/class/projectManager.ts` | Project registry and lifecycle |
-| `apps/backend/src/services/redis.ts` | Redis client, state persistence |
-| `apps/frontend/src/main.tsx` | React entry point |
-| `packages/shared-types/src/index.ts` | Shared types and interfaces |
-| `docs/WEBSOCKET_FORMAT.md` | WebSocket protocol specification |
-| `docs/ERROR_HANDLING.md` | Error serialization patterns |
-| `apps/backend/src/features/call-schedule/services/api/phoneApiService.ts` | IPhoneApiService 抽象層，設備切換點 |
-| `apps/backend/src/features/call-schedule/services/callMonitorService.ts` | ICallMonitorService 抽象層，監控切換點 |
-| `apps/backend/src/features/call-schedule/services/monitor/callMonitorCore.ts` | 通話監控共用邏輯（retry、pendingCalls） |
-
-## Notes for Future Development
-
-- **Project class is complex**: Consider breaking into smaller focused classes as it grows
-- **Error handling**: Always check `/docs/ERROR_HANDLING.md` before serializing Errors
-- **Token refresh**: Mutex deadlock prevention is critical (see TokenManager)
-- **Scaling**: Redis persistence enables horizontal scaling of campaign instances
-- **Type safety**: Leverage shared-types to ensure frontend/backend consistency
-- **Adding a new phone device**: Implement `IPhoneApiService` in `services/api/device/`, implement `ICallMonitorService` in `services/monitor/device/`, then add both to the switch in `phoneApiService.ts` and `callMonitorService.ts`
-- **Call Schedule DB**: Uses SQLite (`better-sqlite3`), not Redis — schema lives in `database.ts`
+| `apps/backend/src/app.ts` | 啟動流程、路由掛載、FIAS 初始化 |
+| `apps/backend/src/shared/util/validateEnv.ts` | 環境變數驗證規則 |
+| `apps/backend/.env.example` | 環境變數說明（必填／條件必填／選填） |
+| `apps/backend/src/features/call-schedule/services/callService/callScheduleService.ts` | 排程核心 |
+| `apps/backend/src/features/call-schedule/services/callService/phoneApiService.ts` | 設備切換點（撥號） |
+| `apps/backend/src/features/call-schedule/services/callService/callMonitorService.ts` | 設備切換點（監控） |
+| `apps/backend/src/features/call-schedule/services/callService/monitor/callMonitorCore.ts` | 通話監控共用邏輯 |
+| `apps/backend/src/features/call-schedule/components/fiasHandler.ts` | FIAS 訊息處理 |
+| `apps/backend/src/features/call-schedule/services/database.ts` | SQLite schema |
+| `docs/FIAS_INTEGRATION.md` | FIAS 整合說明 |

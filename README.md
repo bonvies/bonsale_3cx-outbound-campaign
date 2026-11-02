@@ -1,326 +1,215 @@
-# 📱 Bonsale 3CX 自動外撥活動系統
+# 📞 Bonvies 自動語音通知系統（Call Schedule）
 
 **版本：v3.0.2**
 
-一個整合 3CX 電話系統與 Bonsale CRM 的自動外撥活動管理平台。透過技術自動化地進行大規模電話外撥，並與 CRM 系統即時同步所有通話記錄。
+依排程自動撥打語音通知的服務，支援多種電話設備，並可透過 FIAS 協定與飯店 PMS 整合，提供叫醒服務、入住退房分機權限同步等功能。
+
+> 本專案由 `bonsale_3cx-outbound-campaign` 拆分而來，只保留自動語音通知（Call Schedule）功能。
 
 ## ✨ 核心特色
 
-### 自動外播（Outbound Campaign）
-- ✅ 支援同時執行多個外撥活動
-- ✅ 3CX WebSocket 實時監聽電話狀態
-- ✅ 與 Bonsale CRM 雙向整合
-- ✅ 自動 Token 刷新管理
-- ✅ 支援多分機/多員工並發撥號
-- ✅ 時間排程與限制支援
-- ✅ 撥打自動恢復機制
-- ✅ 實時儀表板監控
-
-### 自動語音通知（Call Schedule）
-- ✅ 排程自動撥打語音通知
-- ✅ 支援 NewRock / Yeastar 兩種電話設備（透過環境變數切換，無需改程式碼）
+### 自動語音通知
+- ✅ 排程自動撥打，重啟後自動恢復未執行的排程
 - ✅ 未接聽自動重試（可設定次數與間隔）
-- ✅ Yeastar：REST API + WebSocket CDR 事件監聽 + 自動 Token 刷新
-- ✅ NewRock：HTTP 1.0 XML API + Push 事件接收
-- ✅ 通話結果回呼通知（callResultNotifier）
+- ✅ 支援 NewRock / Yeastar / FreeSwitch 三種電話設備，透過環境變數切換，不需改程式碼
+- ✅ 管理介面：排程列表、篩選、新增、編輯、刪除、立即撥打
 
 ### FIAS PMS 整合（飯店叫醒服務）
-- ✅ 支援 FIAS 協定與 PMS 系統雙向通訊
-- ✅ **Server 模式**：我方開 TCP Server，等待 PMS 連入（PMS Client 模式）
-- ✅ **Client 模式**：我方主動連至 PMS TCP Server（適用 FidServ Socket Server 等 PMS Server 模式）
-- ✅ 房間號碼自動轉換為分機號（可設定前綴）
-- ✅ Lakeshore Hotel 訂單流程：PMS 推送訂單 → 立即撥打 → 結果非同步回傳 PMS
+- ✅ 以 FIAS 協定與 PMS 雙向通訊
+- ✅ **Server 模式**：我方開 TCP Server，等 PMS 連入
+- ✅ **Client 模式**：我方主動連至 PMS TCP Server（例如 FidServ Socket Server）
+- ✅ 叫醒結果自動回報 PMS（WA）
+- ✅ 房號自動轉分機號（可設定前綴）
+
+### 客戶專屬整合
+- ✅ 依 `CLIENT_ID` 掛載客製化 API（目前：Lakeshore 煙波飯店的房態、入住、退房、資料更新）
 
 ## 🏗️ 專案架構
 
-本專案採用 **Monorepo** 結構，使用 Docker Compose 容器化部署：
-
 ```
-bonsale_3cx-outbound-campaign/
+bonvies_call-schedule/
 ├── apps/
-│   ├── backend/                 # Node.js + TypeScript API 服務
+│   ├── backend/                       # Node.js + Express + TypeScript
 │   │   ├── src/
-│   │   │   ├── features/
-│   │   │   │   ├── outbound-campaign/   # 3CX 自動外播功能
-│   │   │   │   └── call-schedule/       # 自動語音通知 + FIAS PMS 整合
-│   │   │   │       ├── components/      # fiasHandler（FIAS 訊息處理）
-│   │   │   │       ├── services/
-│   │   │   │       │   ├── api/device/  # NewRock / Yeastar 實作
-│   │   │   │       │   └── monitor/     # 通話監控（NewRock / Yeastar）
-│   │   │   │       ├── util/            # fias.ts, fiasClient.ts, fiasConnectionStore.ts
-│   │   │   │       └── routes/          # callSchedule.ts, lakeshore.ts
-│   │   ├── Dockerfile
-│   │   └── package.json
-│   └── frontend/                # React + Vite 前端應用
+│   │   │   ├── app.ts                 # 啟動流程與路由掛載
+│   │   │   ├── shared/                # 環境變數驗證、設定 API、log 時間戳
+│   │   │   └── features/call-schedule/
+│   │   │       ├── routes/            # callSchedule.ts、hotel/lakeshore.ts
+│   │   │       ├── services/          # 排程、SQLite、設備撥號與監控抽象層
+│   │   │       ├── components/        # FIAS 訊息處理
+│   │   │       └── util/              # FIAS TCP server/client、時區
+│   │   ├── data/                      # SQLite 資料庫（不進版控）
+│   │   ├── .env.example               # 環境變數說明
+│   │   └── Dockerfile
+│   └── frontend/                      # React + Vite 管理介面
 │       ├── src/
-│       ├── Dockerfile
-│       └── package.json
-├── packages/
-│   └── shared-types/            # 共用型別定義
-├── docker-compose.yml           # 開發環境配置
-├── docker-compose.prod.yml      # 生產環境配置
-└── .env                         # 環境變數配置（需自行建立）
+│       └── Dockerfile
+├── docs/                              # FIAS 整合、問題分析文件
+├── docker-compose.yml                 # 本地開發
+└── docker-compose.prod.yml            # 生產環境
 ```
 
 ## 🔧 環境需求
 
-### 開發環境
+- **Node.js** 18 以上
+- **pnpm**
+- **Docker & Docker Compose**
+- 生產環境：GCP 專案（Container Registry）+ Compute Engine VM
 
-- **Node.js**: 18.0 以上
-- **pnpm**: 包管理器
-- **Docker & Docker Compose**: 容器化運行
+## 🌍 環境變數
 
-### 生產環境
+完整清單、必填條件與預設值請見 **`apps/backend/.env.example`**。啟動時會自動驗證，缺漏或填錯會在開機當下一次列出並終止服務。
 
-- **GCP 專案**（啟用 Container Registry）
-- **GCP Compute Engine VM**: 用於運行容器
-- **Docker & Docker Compose**: 容器運行環境
+- 本機 `pnpm backend`：讀 `apps/backend/.env`
+- Docker Compose：讀專案根目錄的 `.env`
 
-## 🌍 環境變數配置
-
-### 必需的環境變數
-
-在專案根目錄建立 `.env` 檔案（可參考 `apps/backend/.env.example`）。完整的必填／條件必填／選填與預設值分類請見該檔案，這裡只列出兩個功能開關本身，以及開啟 `ENABLE_OUTBOUND_CAMPAIGN` 時的重點必填變數：
+### 通用（必填）
 
 ```bash
-# 功能開關（必填）
-ENABLE_OUTBOUND_CAMPAIGN=true   # 自動外播功能
-ENABLE_CALL_SCHEDULE=true       # 自動語音通知 (Call Schedule)
-
-# 以下於 ENABLE_OUTBOUND_CAMPAIGN=true 時必填
-BONSALE_HOST=<BONSALE_API_ENDPOINT>
-BONSALE_X_API_KEY=<YOUR_API_KEY>
-BONSALE_X_API_SECRET=<YOUR_API_SECRET>
-HTTP_HOST_3CX=<3CX_SERVER_URL>
-WS_HOST_3CX=<3CX_WEBSOCKET_URL>
-HTTP_HOST_MESSAGE_FOR_AI=<MESSAGE_SERVICE_URL>
-POST_9000_BASIC_AUTH=<BASE64_ENCODED_CREDENTIALS>
+CLIENT_ID=demo                  # 客戶識別；lakeshore 會額外掛載煙波專屬 API
+SITE_TIMEZONE=Asia/Taipei       # 站點時區（IANA 格式），排程與顯示皆以此為準
+TELEPHONE_EQUIPMENT=NewRock     # NewRock | Yeastar | FreeSwitch
 ```
 
-啟動時會依目前功能開關自動驗證上述變數，缺漏會在啟動當下列出並終止服務，不會等到執行期才出錯。
-
-### Call Schedule 專屬環境變數（`ENABLE_CALL_SCHEDULE=true` 時必填）
+### 電話設備（依 `TELEPHONE_EQUIPMENT` 擇一必填）
 
 ```bash
-# 電話設備選擇（必填，無預設值）
-TELEPHONE_EQUIPMENT=NewRock     # 或 Yeastar、FreeSwitch
-
-# NewRock 設定（TELEPHONE_EQUIPMENT=NewRock 時必填）
+# NewRock
 NEW_ROCK_API_HOST=<YOUR_NEW_ROCK_API_HOST>
 NEW_ROCK_API_PATH=/xml
+NEW_ROCK_API_MONITOR_PORT=4022
 
-# Yeastar 設定（TELEPHONE_EQUIPMENT=Yeastar 時必填）
+# Yeastar
 YEASTAR_API_HOST=<YOUR_YEASTAR_API_HOST>
 YEASTAR_API_PATH=/openapi/v1.0
 YEASTAR_USERNAME=<YOUR_YEASTAR_USERNAME>
 YEASTAR_PASSWORD=<YOUR_YEASTAR_PASSWORD>
 
-# FreeSwitch 設定（TELEPHONE_EQUIPMENT=FreeSwitch 時必填）
-FREESWITCH_API_URL=<YOUR_FREESWITCH_API_URL>
-FREESWITCH_API_KEY=<YOUR_FREESWITCH_API_KEY>
+# FreeSwitch
+FREESWITCH_API_URL=<PY_DIALER_URL>
+FREESWITCH_CALLBACK_BASE_URL=<本服務對外網址>
+FREESWITCH_PMS_API_KEY=<YOUR_FREESWITCH_PMS_API_KEY>
+FREESWITCH_PMS_DOMAIN_NAME=<YOUR_FUSIONPBX_DOMAIN_NAME>
 ```
 
-其餘選填變數（`NEW_ROCK_API_MONITOR_PORT`、`OM_CALL_FROM_EXTENSION`、`LAKESHORE_IP_WHITELIST` 等）請見 `apps/backend/.env.example`。
-
-### FIAS PMS 整合環境變數
+### FIAS PMS 整合
 
 ```bash
-# FIAS 連線模式（選填，預設 server）：
-#   server：我方開 TCP Server，等 PMS 連入（PMS Client 模式）
-#   client：我方主動連至 PMS TCP Server（PMS Server 模式，例如 FidServ Socket Server）
-FIAS_MODE=server
+ENABLE_FIAS=true                # 設 false 則不開 TCP（適合 Cloud Run）
+FIAS_MODE=server                # server：等 PMS 連入；client：主動連 PMS
 
-# FIAS_MODE=client 時必填：PMS TCP Server 的位址與 port
+# FIAS_MODE=client 時必填
 # 範例：FidServ Device Settings → Device Type: Socket Server, Port: 5006
 # 注意：PMS 端需勾選「allow new connection」才能接受我方連線
 FIAS_PMS_HOST=<PMS_IP_OR_HOSTNAME>
 FIAS_PMS_PORT=<PMS_PORT>
 ```
 
-其餘選填變數（`FIAS_PORT`、`FIAS_HEARTBEAT_INTERVAL_MS`、`FIAS_ENCODING`、`FIAS_EXTENSION_PREFIX` 等）請見 `apps/backend/.env.example`。
+其餘選填變數（`FIAS_PORT`、`FIAS_ENCODING`、`FIAS_EXTENSION_PREFIX`、`FIAS_WR_MAX_RETRIES`、`LAKESHORE_IP_WHITELIST` 等）請見 `.env.example`。
 
 ## 🚀 快速開始
 
-### 本地開發環境
+### 本機直接執行
 
 ```bash
-# 1. 安裝依賴
 pnpm install
-
-# 2. 建立 .env 檔案（參考上面的環境變數配置）
-cp apps/backend/.env.example apps/backend/.env
-# 編輯 .env 填入具體參數
-
-# 3. 啟動開發環境
-docker-compose up -d
-
-# 4. 查看服務狀態
-docker-compose ps
-
-# 5. 訪問應用
-# - 前端：http://localhost:4030
-# - 後端 API：http://localhost:4020
-# - Redis Commander：http://localhost:8081
+cp apps/backend/.env.example apps/backend/.env   # 編輯填入實際參數
+pnpm dev                                         # 同時啟動前後端
 ```
 
-### 本地開發日誌查看
+### Docker Compose
 
 ```bash
-# 查看所有服務日誌
-docker-compose logs -f
-
-# 查看特定服務日誌
-docker-compose logs -f backend
-docker-compose logs -f frontend
-docker-compose logs -f redis
+cp apps/backend/.env.example .env                # 編輯填入實際參數
+pnpm docker:up
 ```
+
+### 服務位址
+
+| 服務 | 位址 |
+|------|------|
+| 前端 | http://localhost:4030 |
+| 後端 API | http://localhost:4020 |
+| FIAS TCP（server 模式） | localhost:4021 |
+| NewRock 事件接收 | localhost:4022 |
+
+## 🔌 API
+
+| Method | Path | 說明 |
+|--------|------|------|
+| GET | `/api/config/timezone` | 站點時區 |
+| GET | `/api/call-schedule` | 排程列表（分頁、篩選） |
+| GET | `/api/call-schedule/:id` | 單筆排程 |
+| POST | `/api/call-schedule` | 新增排程 |
+| POST | `/api/call-schedule/immediate-call` | 立即撥打 |
+| PUT | `/api/call-schedule/:id` | 修改排程 |
+| DELETE | `/api/call-schedule/expired` | 刪除過期排程 |
+| DELETE | `/api/call-schedule/:id` | 刪除排程 |
+| POST | `/api/call-schedule/freeswitch-webhook` | FreeSwitch 通話結果回呼（僅 FreeSwitch） |
+| POST | `/api/v1/lakeshore/*` | 煙波專屬 API（僅 `CLIENT_ID=lakeshore`） |
+
+日期欄位一律使用 UTC ISO 8601（`Z` 結尾）。
 
 ## 📦 生產環境部署
 
-### 前置準備
-
-1. **GCP 認證設定**
+### 建立並推送映像檔（本機）
 
 ```bash
-gcloud auth login
-gcloud config set project <YOUR_GCP_PROJECT_ID>
-gcloud auth configure-docker gcr.io
+gcloud auth configure-docker gcr.io   # 首次需要
+
+pnpm deploy                           # 後端 + 前端
+pnpm deploy:backend                   # 僅後端
+pnpm deploy:frontend                  # 僅前端
 ```
 
-### 一鍵部署（推薦）
+映像檔：
+- `gcr.io/drvet-server-sysstore-bonvies/bonvies_call-schedule_backend:latest`
+- `gcr.io/drvet-server-sysstore-bonvies/bonvies_call-schedule_frontend:latest`
+
+### VM 上更新
 
 ```bash
-# 建立並推送後端 + 前端映像檔
-pnpm deploy
-
-# 僅部署後端
-pnpm deploy:backend
-
-# 僅部署前端
-pnpm deploy:frontend
-```
-
-### 手動建立映像檔
-
-```bash
-# 建立後端映像檔（指定 Linux/AMD64 架構）
-docker build --platform linux/amd64 \
-  -f apps/backend/Dockerfile \
-  -t gcr.io/<YOUR_PROJECT>/bonsale_3cx-outbound-campaign_backend:latest .
-
-# 建立前端映像檔
-docker build --platform linux/amd64 \
-  -f apps/frontend/Dockerfile \
-  -t gcr.io/<YOUR_PROJECT>/bonsale_3cx-outbound-campaign_frontend:latest .
-
-# 推送到 GCP Container Registry
-docker push gcr.io/<YOUR_PROJECT>/bonsale_3cx-outbound-campaign_backend:latest
-docker push gcr.io/<YOUR_PROJECT>/bonsale_3cx-outbound-campaign_frontend:latest
-```
-
-### VM 上部署
-
-在 GCP VM 上執行：
-
-```bash
-# 拉取最新映像檔
 docker-compose -f docker-compose.prod.yml pull
-
-# 啟動服務
 docker-compose -f docker-compose.prod.yml up -d
-
-# 驗證服務狀態
 docker-compose -f docker-compose.prod.yml ps
 ```
 
-## 🔧 常用管理命令
+SQLite 存在 `sqlite_data` volume，重建容器不會遺失排程。
 
-### 服務管理
-
-```bash
-# 查看服務狀態
-docker-compose -f docker-compose.prod.yml ps
-
-# 查看即時日誌
-docker-compose -f docker-compose.prod.yml logs -f
-
-# 查看特定服務日誌
-docker-compose -f docker-compose.prod.yml logs backend
-
-# 重啟特定服務
-docker-compose -f docker-compose.prod.yml restart backend
-
-# 停止所有服務
-docker-compose -f docker-compose.prod.yml down
-
-# 重新啟動整個專案
-docker-compose -f docker-compose.prod.yml down
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-### 環境變數更新
-
-修改 `.env` 後，重啟相關服務以應用變更：
+### 修改環境變數
 
 ```bash
 nano .env
-docker-compose -f docker-compose.prod.yml restart backend
-```
-
-## 📝 更新流程
-
-1. 修改程式碼並本地測試
-2. 建立新的 Docker 映像檔並推送（`pnpm deploy`）
-3. 在 VM 上拉取新映像並重啟服務
-
-```bash
-# 本地：一鍵建立並推送
-pnpm deploy:backend
-
-# VM 上：更新服務
-docker-compose -f docker-compose.prod.yml pull backend
-docker-compose -f docker-compose.prod.yml up -d backend
+docker-compose -f docker-compose.prod.yml up -d backend   # 重新建立容器以套用新的 .env
 ```
 
 ## 📚 技術棧
 
 | 層級 | 技術 |
 |------|------|
-| **前端** | React 19 + Vite + TypeScript + Material-UI 7 |
+| **前端** | React 19 + Vite + TypeScript + Material-UI 7 + SWR |
 | **後端** | Node.js + Express + TypeScript |
-| **資料庫** | Redis（外播狀態快取）+ SQLite / better-sqlite3（語音通知排程） |
+| **資料庫** | SQLite（better-sqlite3） |
+| **排程** | node-schedule |
+| **電話設備** | NewRock OM API / Yeastar OpenAPI / FreeSwitch（可切換） |
+| **PMS 整合** | FIAS 協定（Server / Client 雙模式） |
 | **容器化** | Docker + Docker Compose |
-| **通訊** | WebSocket（實時更新）+ REST API + TCP（FIAS PMS）|
-| **託管** | Google Cloud Platform (GCP) |
-| **電話設備** | NewRock OM API / Yeastar OpenAPI（可切換）|
-| **PMS 整合** | FIAS 協定（Server / Client 雙模式）|
+| **託管** | Google Cloud Platform |
 
 ## 🐛 故障排查
 
-### 後端無法連接 3CX
+### 啟動時顯示「環境變數設定不完整或有誤」
+依畫面列出的變數名稱補齊 `.env`，規則見 `apps/backend/.env.example`。`SITE_TIMEZONE` 必須是合法的 IANA 時區名稱（例如 `Asia/Taipei`）。
 
-- 檢查 `HTTP_HOST_3CX` 和 `WS_HOST_3CX` 是否正確
-- 驗證 3CX 管理員認證參數
-- 檢查防火牆規則是否允許出站連接
+### `better-sqlite3` 出現 `NODE_MODULE_VERSION` 不符
+原生模組與目前 Node 版本不一致，執行 `pnpm rebuild better-sqlite3`。
 
-### Redis 連接失敗
-
-```bash
-# 檢查 Redis 服務狀態
-docker-compose ps redis
-
-# 進入 Redis 容器測試連接
-docker exec -it bonsale_3cx-outbound-campaign_redis redis-cli ping
-```
-
-### 前端無法訪問
-
-- 驗證前端容器是否正常運行：`docker-compose ps frontend`
-- 檢查埠口 4030 是否被佔用
-- 確認後端 API 地址是否正確配置
+### 撥不出電話
+- 查看後端日誌是否有 `話機設備初始化失敗`
+- 確認 `TELEPHONE_EQUIPMENT` 與對應設備變數正確、網路可達
 
 ### FIAS 連線問題
-
 - **Server 模式**：確認防火牆已開放 `FIAS_PORT`（預設 4021）供 PMS 連入
-- **Client 模式**：確認 PMS 端已勾選「allow new connection」，且 `FIAS_PMS_HOST` / `FIAS_PMS_PORT` 填寫正確
-- 查看後端日誌中 `[FIAS]` 前綴的訊息排查連線狀態
+- **Client 模式**：確認 PMS 端已勾選「allow new connection」，且 `FIAS_PMS_HOST` / `FIAS_PMS_PORT` 正確
+- 查看後端日誌中 `[FIAS]` 前綴的訊息
+- 詳見 `docs/FIAS_INTEGRATION.md`
