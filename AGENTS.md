@@ -59,14 +59,6 @@ apps/backend/           # Express API server
   - src/shared/        # Backend-only shared utilities (alias: @shared-local/*)
   - src/features/
     - outbound-campaign/   # 3CX 自動外播功能
-    - call-schedule/       # 自動語音通知功能
-      - services/api/      # Phone API 抽象層（IPhoneApiService）
-        - device/          # NewRock / Yeastar 實作
-      - services/monitor/  # Call Monitor 抽象層（ICallMonitorService）
-        - device/          # NewRock / Yeastar 監控實作
-      - services/          # callScheduleService, database
-      - routes/            # HTTP 路由
-      - types/             # 型別定義
 
 apps/frontend/         # React web dashboard
   - src/components/    # React UI components
@@ -127,19 +119,6 @@ The backend exposes this via WebSocket events, allowing the frontend to view/con
 - `callControl.ts`: 3CX call operations (dial, hangup, transfer)
 - `xApi.ts`: Token refresh from 3CX authentication
 
-**Call Schedule Feature** (`src/features/call-schedule/`)
-- **`phoneApiService.ts`**: `IPhoneApiService` 抽象層，根據 `TELEPHONE_EQUIPMENT` 環境變數切換設備
-  - `device/newRockApi.ts`: NewRock HTTP 1.0 XML API 實作
-  - `device/yeastarApi.ts`: Yeastar REST API + 自動 Token 刷新（斷網恢復）
-- **`callMonitorService.ts`**: `ICallMonitorService` 抽象層，切換通話監控實作
-  - `monitor/device/NewRockCallMonitorService.ts`: HTTP Server 接收 NewRock XML Push（port 4022）
-  - `monitor/device/YeastarCallMonitorService.ts`: WebSocket 訂閱 Yeastar CDR 事件（topic 30012）
-  - `monitor/callMonitorCore.ts`: 共用業務邏輯（pendingCalls、retry、handleAnswer/Bye）
-- **`callScheduleService.ts`**: 排程核心（node-schedule），讀 SQLite 排程並觸發撥號
-- **`database.ts`**: better-sqlite3，SQLite 資料庫操作
-
-**切換設備**：只需修改 `.env` 中的 `TELEPHONE_EQUIPMENT=NewRock|Yeastar`，程式碼層不需改動。
-
 ### Frontend
 - **Router setup** determines page layout
 - **Real-time updates** via WebSocket message events
@@ -174,7 +153,6 @@ The backend exposes this via WebSocket events, allowing the frontend to view/con
 - `@shared/*` → Backend: `../../packages/shared-types/src/*`
 - `@shared-local/*` → Backend: `apps/backend/src/shared/*`
 - `@outbound/*` → Backend: `apps/backend/src/features/outbound-campaign/*`
-- `@call-schedule/*` → Backend: `apps/backend/src/features/call-schedule/*`
 - Frontend imports from `packages/shared-types` directly
 
 **Production Build Note**: Path aliases are resolved at build time by `tsc-alias` (runs after `tsc`). The `build` script is `tsc && tsc-alias` — never just `tsc` alone, or aliases will remain unresolved in `dist/` and cause `Cannot find module` errors at runtime.
@@ -208,29 +186,6 @@ IDLE_CHECK_INTERVAL=300000
 MIN_IDLE_CHECK_INTERVAL=30000
 MAX_IDLE_CHECK_INTERVAL=300000
 IDLE_CHECK_BACKOFF_FACTOR=1.5
-
-# Feature Flags
-ENABLE_OUTBOUND_CAMPAIGN=true   # 自動外播功能
-ENABLE_CALL_SCHEDULE=true        # 自動語音通知 (Call Schedule)
-
-# ── Call Schedule 專屬（ENABLE_CALL_SCHEDULE=true 時必填）──
-# 電話設備選擇（必填，無預設值）
-TELEPHONE_EQUIPMENT=NewRock      # NewRock 或 Yeastar
-
-# 外播主叫分機號碼
-OM_CALL_FROM_EXTENSION=9038
-
-# NewRock 設定（TELEPHONE_EQUIPMENT=NewRock 時必填）
-# OM 事件監聽 Port（接收設備 Push 通知，僅 NewRock 使用）
-NEW_ROCK_API_MONITOR_PORT=4022
-NEW_ROCK_API_HOST=http://your-newrock-host
-NEW_ROCK_API_PATH=/xml
-
-# Yeastar 設定（TELEPHONE_EQUIPMENT=Yeastar 時必填）
-YEASTAR_API_HOST=https://your-yeastar-host
-YEASTAR_API_PATH=/openapi/v1.0
-YEASTAR_USERNAME=your-username
-YEASTAR_PASSWORD=your-password
 ```
 
 ## Development Workflow
@@ -283,9 +238,6 @@ See `/README.md` for comprehensive deployment guide (in Chinese).
 | `packages/shared-types/src/index.ts` | Shared types and interfaces |
 | `docs/WEBSOCKET_FORMAT.md` | WebSocket protocol specification |
 | `docs/ERROR_HANDLING.md` | Error serialization patterns |
-| `apps/backend/src/features/call-schedule/services/api/phoneApiService.ts` | IPhoneApiService 抽象層，設備切換點 |
-| `apps/backend/src/features/call-schedule/services/callMonitorService.ts` | ICallMonitorService 抽象層，監控切換點 |
-| `apps/backend/src/features/call-schedule/services/monitor/callMonitorCore.ts` | 通話監控共用邏輯（retry、pendingCalls） |
 
 ## Notes for Future Development
 
@@ -294,5 +246,4 @@ See `/README.md` for comprehensive deployment guide (in Chinese).
 - **Token refresh**: Mutex deadlock prevention is critical (see TokenManager)
 - **Scaling**: Redis persistence enables horizontal scaling of campaign instances
 - **Type safety**: Leverage shared-types to ensure frontend/backend consistency
-- **Adding a new phone device**: Implement `IPhoneApiService` in `services/api/device/`, implement `ICallMonitorService` in `services/monitor/device/`, then add both to the switch in `phoneApiService.ts` and `callMonitorService.ts`
-- **Call Schedule DB**: Uses SQLite (`better-sqlite3`), not Redis — schema lives in `database.ts`
+- **Call Schedule 已拆分**：自動語音通知 / FIAS PMS 整合已移到獨立 repo `bonvies/bonvies_call-schedule`，本 repo 只負責自動外播

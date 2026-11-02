@@ -8,14 +8,10 @@ services:
     container_name: bonsale_3cx-outbound-campaign_backend
     ports:
       - "4020:4020"
-      - "4021:4021"
-      - "4022:4022"
     env_file:
       - .env
     depends_on:
       - redis
-    volumes:
-      - sqlite_data:/app/apps/backend/data
     networks:
       - bonsale-network
     restart: unless-stopped
@@ -60,7 +56,6 @@ services:
 
 volumes:
   redis_data:
-  sqlite_data:
 
 networks:
   bonsale-network:

@@ -1,8 +1,7 @@
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, Navigate, RouterProvider } from "react-router-dom";
 
 import Layout from "../components/Layout";
 import OutboundCampaign from "../../features/outbound-campaign/pages/OutboundCampaign";
-import CallSchedule from "../../features/call-schedule/pages/CallSchedule";
 
 const router = createBrowserRouter([
   {
@@ -10,12 +9,16 @@ const router = createBrowserRouter([
     element: <Layout />,
     children: [
       {
+        index: true,
+        element: <Navigate to="/outbound-campaign" replace />,
+      },
+      {
         path: 'outbound-campaign',
         element: <OutboundCampaign />,
       },
       {
-        path: 'call-schedule',
-        element: <CallSchedule />,
+        path: '*',
+        element: <Navigate to="/outbound-campaign" replace />,
       }
     ]
   }

@@ -11,42 +11,26 @@ import dotenv from 'dotenv';
 import { createServer as createHttpServer } from 'http';
 import { WebSocketServer } from 'ws';
 
-// 共用設定 API
-import configRouter from './shared/routes/config';
-import sharedBonsaleRouter from './shared/routes/bonsale';
 import { validateEnv } from './shared/util/validateEnv';
 
-// 自動外播 (Outbound Campaign) 與 語音通知 (Call Schedule) 模組均採 dynamic import，
-// 僅對應 feature flag 為 true 時才載入，避免停用時因缺少環境變數而在模組載入階段崩潰。
+// 自動外播 (Outbound Campaign) 模組採 dynamic import：其中 callControl.ts 在模組載入時就會檢查
+// 3CX 環境變數並 throw，必須等 validateEnv() 先跑完、列出清楚的缺漏訊息後才載入。
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 環境設定 & Feature Flags
+// 環境設定
 // ─────────────────────────────────────────────────────────────────────────────
 
 dotenv.config();
 
 /**
- * 功能開關與其餘環境變數，依目前啟用的組合（ENABLE_OUTBOUND_CAMPAIGN /
- * ENABLE_CALL_SCHEDULE / TELEPHONE_EQUIPMENT / FIAS_MODE）一次驗證，
- * 缺漏或填錯會在此處列出並終止服務。完整規則請見 apps/backend/.env.example
- * 與 shared/util/validateEnv.ts。
- *
- *   ENABLE_OUTBOUND_CAMPAIGN=true   → 啟用自動外播（連 Redis、建 WebSocket）
- *   ENABLE_OUTBOUND_CAMPAIGN=false  → 停用自動外播
- *   ENABLE_CALL_SCHEDULE=true       → 啟用語音通知（建 SQLite）
- *   ENABLE_CALL_SCHEDULE=false      → 停用語音通知
- *   ENABLE_FIAS=true                → 啟用 FIAS TCP 伺服器／客戶端（預設 true）
- *   ENABLE_FIAS=false               → 停用 FIAS（不佔用 TCP port，適合 Cloud Run）
+ * 一次驗證所有必填環境變數，缺漏或填錯會在此處列出並終止服務。
+ * 完整規則請見 apps/backend/.env.example 與 shared/util/validateEnv.ts。
  */
 validateEnv();
 
-const ENABLE_OUTBOUND_CAMPAIGN = process.env.ENABLE_OUTBOUND_CAMPAIGN === 'true';
-const ENABLE_CALL_SCHEDULE = process.env.ENABLE_CALL_SCHEDULE === 'true';
-const ENABLE_FIAS = process.env.ENABLE_FIAS !== 'false'; // 預設 true，設 false 可停用
-const CLIENT_ID = process.env.CLIENT_ID; // 用於掛載/啟用特定客戶的客製化程式區段（例如 lakeshore 專屬路由）
+const CLIENT_ID = process.env.CLIENT_ID; // 客戶識別，回傳於根路由供確認部署對象
 
 const PORT = process.env.HTTP_PORT || 4020; // HTTP / WebSocket 主服務埠
-const FIAS_PORT = process.env.FIAS_PORT || 4021; // FIAS TCP 伺服器埠
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Express 應用程式設定
@@ -78,33 +62,15 @@ const httpServer = createHttpServer(app);
 const mainWebSocketServer = new WebSocketServer({ noServer: true });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 路由掛載（依功能開關決定是否啟用）
+// 路由掛載
 // ─────────────────────────────────────────────────────────────────────────────
-
-app.use('/api/config', configRouter);        // 功能設定 API（無條件掛載）
-app.use('/api/bonsale', sharedBonsaleRouter); // Bonsale 共用 API（無條件掛載，不受 feature flag 影響）
 
 // 自動外播路由：先以 placeholder router 佔位，確保排在 404 handler 之前。
 // setupOutboundCampaign() 完成 dynamic import 後，才會將實際路由掛入 placeholder。
-let outboundBonsaleRouter: express.Router | null = null;
-let outboundControlRouter: express.Router | null = null;
-if (ENABLE_OUTBOUND_CAMPAIGN) {
-  outboundBonsaleRouter = express.Router();
-  outboundControlRouter = express.Router();
-  app.use('/api/bonsale', outboundBonsaleRouter);
-  app.use('/api/outbound', outboundControlRouter);
-}
-
-// 語音通知路由：先以 placeholder router 佔位，確保排在 404 handler 之前。
-// setupCallSchedule() 完成 dynamic import 後，才會將實際路由掛入 placeholder。
-let callScheduleRouter_: express.Router | null = null;
-let lakeshoreRouter_: express.Router | null = null;
-if (ENABLE_CALL_SCHEDULE) {
-  callScheduleRouter_ = express.Router();
-  lakeshoreRouter_ = express.Router();
-  app.use('/api/call-schedule', callScheduleRouter_);
-  app.use('/api/v1/lakeshore', lakeshoreRouter_);
-}
+const outboundBonsaleRouter = express.Router();
+const outboundControlRouter = express.Router();
+app.use('/api/bonsale', outboundBonsaleRouter);
+app.use('/api/outbound', outboundControlRouter);
 
 // 根路由：健康檢查 / 版本確認
 app.get('/', (_req, res) => {
@@ -134,7 +100,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 /**
  * setupOutboundCampaign() 完成後由該函數設定。
  * 負責將 WebSocket upgrade 請求分流到 clientWsWebHook 或 mainWebSocketServer。
- * 未設定（ENABLE_OUTBOUND_CAMPAIGN=false 或 setup 尚未完成）時一律拒絕連線。
+ * setup 尚未完成時一律拒絕連線。
  */
 let outboundUpgradeHandler: ((req: import('http').IncomingMessage, socket: import('stream').Duplex, head: Buffer) => void) | null = null;
 
@@ -157,7 +123,7 @@ let outboundCloseRedis: (() => Promise<void>) | null = null;
  * 動態載入並初始化自動外播功能。
  *
  * 使用 dynamic import 確保 outbound-campaign 模組（含頂層 env 驗證的 callControl.ts）
- * 只在 ENABLE_OUTBOUND_CAMPAIGN=true 時才被載入，避免停用時因缺少 3CX 環境變數而崩潰。
+ * 在 validateEnv() 之後才被載入，缺少 3CX 環境變數時能先看到完整的缺漏清單。
  *
  * 完成以下工作：
  * 1. 動態載入所有 outbound-campaign 模組
@@ -189,9 +155,9 @@ async function setupOutboundCampaign(): Promise<void> {
   const activeProjects = new Map<string, ProjectInstance>();
 
   // ── 路由填入 placeholder ──────────────────────────────────────────────────
-  outboundBonsaleRouter!.use('/', bonsaleRouter);
+  outboundBonsaleRouter.use('/', bonsaleRouter);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  outboundControlRouter!.use('/', createOutboundRouter(activeProjects as any, mainWebSocketServer));
+  outboundControlRouter.use('/', createOutboundRouter(activeProjects as any, mainWebSocketServer));
 
   // ── WebSocket upgrade 分流 ────────────────────────────────────────────────
   outboundUpgradeHandler = (request, socket, head) => {
@@ -381,164 +347,22 @@ async function setupOutboundCampaign(): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 語音通知 (Call Schedule)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 動態載入並初始化語音通知功能。
- *
- * 完成以下工作：
- * 1. 動態載入所有 call-schedule 模組
- * 2. 將實際路由填入 placeholder router
- * 3. 初始化 SQLite 資料庫
- * 4. 初始化電話設備（失敗時僅 log，不中斷啟動）
- * 5. 恢復重啟前未執行的排程任務
- * 6. 啟動通話狀態監控（失敗時僅 log，不中斷啟動）
- * 7. 啟動 FIAS TCP 伺服器
- */
-async function setupCallSchedule(): Promise<void> {
-  const [
-    { default: callScheduleRouter },
-    { initDatabase },
-    { startCallMonitorServer },
-    { recoverPendingSchedules },
-    { phoneApiService },
-    { default: fiasHandler },
-    { createServer: createFiasServer },
-    { connectToPms },
-    { setFiasConn },
-    { FiasWakeupResultHandler },
-    { registerCallResultHandler },
-  ] = await Promise.all([
-    import('./features/call-schedule/routes/callSchedule'),
-    import('./features/call-schedule/services/database'),
-    import('./features/call-schedule/services/callService/callMonitorService'),
-    import('./features/call-schedule/services/callService/callScheduleService'),
-    import('./features/call-schedule/services/callService/phoneApiService'),
-    import('./features/call-schedule/components/fiasHandler'),
-    import('./features/call-schedule/util/fias'),
-    import('./features/call-schedule/util/fiasClient'),
-    import('./features/call-schedule/util/fiasConnectionStore'),
-    import('./features/call-schedule/components/fiasWakeupResultHandler'),
-    import('./features/call-schedule/services/callService/monitor/callResultNotifier'),
-  ]);
-
-  // ── 路由填入 placeholder ──────────────────────────────────────────────────
-  // 註：FreeSWITCH 的 CDR webhook（/freeswitch-webhook）由 FreeSwitchCallMonitorService
-  //     在 startCallMonitorServer() 時自行掛載，僅 TELEPHONE_EQUIPMENT=FreeSwitch 時生效
-  callScheduleRouter_!.use('/', callScheduleRouter);
-
-  // 客戶專屬路由：依 CLIENT_ID 動態載入並掛載對應的客製化程式區段，新增客戶時在此加一個 case
-  switch (CLIENT_ID) {
-    case 'lakeshore': {
-      const { default: lakeshoreRouter } = await import('./features/call-schedule/routes/hotel/lakeshore');
-      lakeshoreRouter_!.use('/', lakeshoreRouter);
-      break;
-    }
-    default:
-      break;
-  }
-
-  // ── 資料庫初始化 ──────────────────────────────────────────────────────────
-  await initDatabase();
-
-  // ── 電話設備初始化 ────────────────────────────────────────────────────────
-  // 失敗時僅 log，不中斷啟動——排程與監控照常啟動，撥號時才回報設備錯誤
-  try {
-    await phoneApiService.init?.();
-  } catch (error) {
-    console.error('❌ [CallSchedule] 話機設備初始化失敗，排程將繼續啟動但無法撥出電話:', error);
-  }
-
-  // ── 排程恢復 ──────────────────────────────────────────────────────────────
-  recoverPendingSchedules();
-
-  // ── 通話狀態監控 ──────────────────────────────────────────────────────────
-  // 失敗時僅 log，不中斷啟動——設備未設定時監控無法啟動，但 server 照常運行
-  try {
-    startCallMonitorServer(callScheduleRouter_!);
-  } catch (error) {
-    console.error('❌ [CallSchedule] 通話監控啟動失敗:', error);
-  }
-
-  // ── FIAS TCP ──────────────────────────────────────────────────────────────
-  // ENABLE_FIAS=false → 跳過，不佔用 TCP port（適合 Cloud Run 等單 port 環境）
-  // FIAS_MODE=server（預設）：開 TCP server，等 PMS 連入
-  // FIAS_MODE=client        ：主動連至 PMS TCP server（煙波等 PMS SERVER 模式）
-  if (!ENABLE_FIAS) {
-    console.log('📡 FIAS 已停用（ENABLE_FIAS=false），跳過 TCP 初始化');
-  } else {
-    // FiasWakeupResultHandler 是協定層級的邏輯（依 FIAS 規格回報 WA），只要有啟用
-    // FIAS 就該註冊，不分客戶。若某飯店需要額外的客製化通知（非 FIAS 規格要求），
-    // 在這裡另外 registerCallResultHandler(new 該飯店Handler()) 即可，兩者互不影響。
-    registerCallResultHandler(new FiasWakeupResultHandler());
-
-    const FIAS_MODE = process.env.FIAS_MODE ?? 'server';
-
-    if (FIAS_MODE === 'client') {
-      const FIAS_PMS_HOST = process.env.FIAS_PMS_HOST;
-      const FIAS_PMS_PORT = parseInt(process.env.FIAS_PMS_PORT ?? String(FIAS_PORT), 10);
-
-      if (!FIAS_PMS_HOST) {
-        console.error('❌ [CallSchedule] FIAS_MODE=client 但未設定 FIAS_PMS_HOST，跳過 FIAS 連線');
-      } else {
-        const FIAS_HEARTBEAT = parseInt(process.env.FIAS_HEARTBEAT_INTERVAL_MS ?? '0', 10);
-        connectToPms(
-          { host: FIAS_PMS_HOST, port: FIAS_PMS_PORT, heartbeatIntervalMs: FIAS_HEARTBEAT },
-          async (msg, conn) => {
-            console.log('--- FIAS TCP 客戶端收到訊息 ---');
-            console.log('訊息內容:', msg);
-            fiasHandler(msg, conn);
-          },
-          () => setFiasConn(null),
-        );
-        console.log(`📡 FIAS TCP 客戶端正在連線至 PMS ${FIAS_PMS_HOST}:${FIAS_PMS_PORT}...`);
-      }
-    } else {
-      const fiasServer = createFiasServer(
-        async (msg, conn) => {
-          console.log('--- FIAS TCP 服務器收到訊息 ---');
-          console.log('訊息內容:', msg);
-          fiasHandler(msg, conn);
-        },
-        () => setFiasConn(null),
-      );
-
-      fiasServer.listen(FIAS_PORT, () => {
-        console.log(`📡 FIAS TCP server is running on port ${FIAS_PORT}`);
-      });
-    }
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // 啟動伺服器
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 啟動順序：
  * 1. 動態載入自動外播模組並初始化（含 Redis、WebSocket 設定、專案恢復）
- * 2. 初始化語音通知的資料儲存與背景服務
- * 3. 印出啟動資訊
+ * 2. 印出啟動資訊
  */
 httpServer.listen(PORT, async () => {
   try {
-    if (ENABLE_OUTBOUND_CAMPAIGN) {
-      await setupOutboundCampaign();
-    }
-
-    if (ENABLE_CALL_SCHEDULE) {
-      await setupCallSchedule();
-    }
+    await setupOutboundCampaign();
 
     console.log(`🚀 Server is running on port ${PORT}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`⚡️ 自動外播: ${ENABLE_OUTBOUND_CAMPAIGN ? '啟用' : '停用'}`);
-    console.log(`⚡️ 語音通知: ${ENABLE_CALL_SCHEDULE ? '啟用' : '停用'}`);
-    if (ENABLE_OUTBOUND_CAMPAIGN) { // 只有在自動外播功能啟用時才顯示 WebSocket 相關資訊
-      console.log(`🔌 WebSocket server is running on port ${PORT}`);
-      console.log(`🖥️ Bonsale WebHook WebSocket is available on port ${PORT}/api/bonsale/webhook-ws`);
-    }
+    console.log(`🔌 WebSocket server is running on port ${PORT}`);
+    console.log(`🖥️ Bonsale WebHook WebSocket is available on port ${PORT}/api/bonsale/webhook-ws`);
     console.log(`ℹ️ Version: v3.0.2`);
 
   } catch (error) {
