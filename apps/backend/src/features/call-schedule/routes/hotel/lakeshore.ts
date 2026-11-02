@@ -137,7 +137,7 @@ router.post('/room/status', async (req: Request, res: Response) => {
     }
 
     // 檢核 statustime 是否為有效時間字串，且不早於「現在-10分」
-    const timezone = getSiteTimezone();
+    const timezone = await getSiteTimezone();
     const statusDate = parseStatusTime(statustime, timezone);
     if (!statusDate || statusDate.getTime() < Date.now() - STATUSTIME_MAX_AGE_MS) {
       respond(res, '006', { message: `invalid or stale statustime: ${statustime}` });
@@ -209,7 +209,7 @@ router.post('/room/status/phone', async (req: Request, res: Response) => {
     // time 為選填欄位：沒給就跳過新鮮度檢查；有給才驗證格式與新鮮度
     //（格式跟 /room/status 的 statustime 完全一樣，重用同一套解析邏輯）
     if (time !== undefined && time !== null && time !== '') {
-      const timezone = getSiteTimezone();
+      const timezone = await getSiteTimezone();
       const statusDate = parseStatusTime(time, timezone);
       if (!statusDate || statusDate.getTime() < Date.now() - STATUSTIME_MAX_AGE_MS) {
         res.status(400).json({ success: false, message: `invalid or stale time: ${time}` });

@@ -1,5 +1,5 @@
 {
-  "name": "bonvies_call-schedule",
+  "name": "bonsale_3cx-outbound-campaign",
   "version": "1.0.0",
   "private": true,
   "engines": {
@@ -18,8 +18,8 @@
     "clean": "turbo run clean && rm -rf node_modules .turbo",
     "docker:up": "docker-compose up --build",
     "docker:down": "docker-compose down",
-    "deploy:backend": "docker build --platform linux/amd64 -f apps/backend/Dockerfile -t gcr.io/drvet-server-sysstore-bonvies/bonvies_call-schedule_backend:latest . && docker push gcr.io/drvet-server-sysstore-bonvies/bonvies_call-schedule_backend:latest",
-    "deploy:frontend": "docker build --platform linux/amd64 -f apps/frontend/Dockerfile -t gcr.io/drvet-server-sysstore-bonvies/bonvies_call-schedule_frontend:latest . && docker push gcr.io/drvet-server-sysstore-bonvies/bonvies_call-schedule_frontend:latest",
+    "deploy:backend": "docker build --platform linux/amd64 -f apps/backend/Dockerfile -t gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_backend:latest . && docker push gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_backend:latest",
+    "deploy:frontend": "docker build --platform linux/amd64 -f apps/frontend/Dockerfile -t gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_frontend:latest . && docker push gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_frontend:latest",
     "deploy": "pnpm deploy:backend && pnpm deploy:frontend",
     "prepare": "husky"
   },
@@ -33,11 +33,23 @@
     ]
   },
   "devDependencies": {
+    "@types/lodash": "^4.17.20",
     "@types/node": "^20.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.5",
     "turbo": "^1.10.0",
     "typescript": "^5.9.2"
   },
-  "packageManager": "pnpm@8.6.0"
+  "packageManager": "pnpm@8.6.0",
+  "dependencies": {
+    "@mui/x-date-pickers": "^8.22.0",
+    "@types/jsonwebtoken": "^9.0.7",
+    "async-mutex": "^0.5.0",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "lodash": "^4.17.21",
+    "redis": "^5.8.2",
+    "rrule": "^2.8.1"
+  }
 }

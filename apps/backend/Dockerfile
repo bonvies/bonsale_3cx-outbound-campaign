@@ -11,6 +11,9 @@ COPY pnpm-workspace.yaml ./
 # Install pnpm
 RUN npm install -g pnpm
 
+# Copy shared packages
+COPY packages ./packages
+
 # Copy only backend app (excluding .env files)
 COPY apps/backend ./apps/backend
 
@@ -19,6 +22,10 @@ RUN rm -f ./apps/backend/.env*
 
 # Install all dependencies
 RUN pnpm install
+
+# Build shared types first
+WORKDIR /app/packages/shared-types
+RUN pnpm run build
 
 # Build backend directly with TypeScript compiler
 WORKDIR /app/apps/backend

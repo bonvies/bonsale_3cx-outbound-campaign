@@ -36,7 +36,7 @@ import {
   deleteCallSchedule,
   type FetchCallSchedulesParams,
 } from '../api/CallSchedule'
-import { fetchSiteTimezone } from '../../../shared/api/config'
+import { fetchBonsaleCompany } from '../../outbound-campaign/api/Bonsale'
 
 const PAGE_SIZE = 10
 
@@ -66,8 +66,8 @@ export default function CallSchedule() {
   })
 
   const { data, mutate } = useSWR(fetchParams, fetchCallSchedules)
-  const { data: siteTimezone } = useSWR('siteTimezone', fetchSiteTimezone, { revalidateOnFocus: false })
-  const timezoneIANA = siteTimezone || 'UTC'
+  const { data: bonsaleCompanySysData } = useSWR('bonsaleCompany', fetchBonsaleCompany)
+  const timezoneIANA = bonsaleCompanySysData?.timezoneIANA || 'UTC'
 
   const records = data?.data ?? []
   const totalCount = data?.total ?? 0
