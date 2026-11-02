@@ -7,7 +7,7 @@ services:
       dockerfile: apps/backend/Dockerfile
     container_name: bonsale_3cx-outbound-campaign_backend
     ports:
-      - "4020:4020"
+      - "4120:4120"
     env_file:
       - .env
     depends_on:
@@ -22,7 +22,7 @@ services:
       dockerfile: apps/frontend/Dockerfile
     container_name: bonsale_3cx-outbound-campaign_frontend
     ports:
-      - "4030:80"
+      - "4130:80"
     depends_on:
       - backend
     networks:

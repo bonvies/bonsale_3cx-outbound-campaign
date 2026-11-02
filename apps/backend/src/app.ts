@@ -31,7 +31,7 @@ validateEnv();
 
 const CLIENT_ID = process.env.CLIENT_ID; // 客戶識別，回傳於根路由供確認部署對象
 
-const PORT = process.env.HTTP_PORT || 4020; // HTTP / WebSocket 主服務埠
+const PORT = process.env.HTTP_PORT || 4120; // HTTP / WebSocket 主服務埠
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Express 應用程式設定

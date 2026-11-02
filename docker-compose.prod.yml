@@ -5,7 +5,7 @@ services:
     image: gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_backend:latest
     container_name: bonsale_3cx-outbound-campaign_backend
     ports:
-      - "4020:4020"
+      - "4120:4120"
     env_file:
       - .env
     depends_on:
@@ -23,7 +23,7 @@ services:
     image: gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_frontend:latest
     container_name: bonsale_3cx-outbound-campaign_frontend
     ports:
-      - "4030:80"
+      - "4130:80"
     depends_on:
       - backend
     networks:

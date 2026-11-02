@@ -8,8 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 pnpm install              # Install all dependencies
 pnpm dev                  # Run backend & frontend in dev mode
-pnpm backend              # Run backend only (Node.js on port 4020)
-pnpm frontend             # Run frontend only (Vite on port 4030)
+pnpm backend              # Run backend only (Node.js on port 4120)
+pnpm frontend             # Run frontend only (Vite on port 4130)
 pnpm type-check           # TypeScript validation across all packages
 pnpm lint                 # ESLint check
 pnpm lint:fix             # ESLint with auto-fix
@@ -166,7 +166,7 @@ HTTP_HOST_3CX=https://your-3cx-host:5015
 WS_HOST_3CX=wss://your-3cx-host:5015
 
 # Application
-HTTP_PORT=4020
+HTTP_PORT=4120
 NODE_ENV=development
 
 # Bonsale CRM

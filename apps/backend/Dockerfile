@@ -32,7 +32,7 @@ WORKDIR /app/apps/backend
 RUN pnpm build
 
 # Expose the port
-EXPOSE 4020
+EXPOSE 4120
 
 # Command to run the application
 CMD ["pnpm", "start"]

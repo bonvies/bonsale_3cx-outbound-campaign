@@ -13,7 +13,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(version),
   },
   server: {
-    port: 4030
+    port: 4130
   },
   resolve: {
     alias: {

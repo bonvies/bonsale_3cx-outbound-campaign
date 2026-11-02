@@ -146,7 +146,7 @@ curl -I http://localhost:8089/api/v5/member
 curl -I http://localhost:8090/login
 
 # 測試 Backend
-curl -I http://localhost:4020/health
+curl -I http://localhost:4120/health
 ```
 
 ### 4. 訪問 Web 服務
@@ -155,7 +155,7 @@ curl -I http://localhost:4020/health
 |------|-----|------|
 | **Fe-Bonsale** | http://localhost:8090 | 前端登入頁面 |
 | **Redis Commander** | http://localhost:8081 | Redis 管理工具 |
-| **Backend API** | http://localhost:4020 | 後端服務 |
+| **Backend API** | http://localhost:4120 | 後端服務 |
 | **Telesale API** | http://localhost:8089 | Telesale 服務 |
 
 ---

@@ -93,8 +93,8 @@ docker-compose up -d
 docker-compose ps
 
 # 5. 訪問應用
-# - 前端：http://localhost:4030
-# - 後端 API：http://localhost:4020
+# - 前端：http://localhost:4130
+# - 後端 API：http://localhost:4120
 # - Redis Commander：http://localhost:8081
 ```
 
@@ -249,5 +249,5 @@ docker exec -it bonsale_3cx-outbound-campaign_redis redis-cli ping
 ### 前端無法訪問
 
 - 驗證前端容器是否正常運行：`docker-compose ps frontend`
-- 檢查埠口 4030 是否被佔用
+- 檢查埠口 4130 是否被佔用
 - 確認後端 API 地址是否正確配置
