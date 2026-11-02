@@ -30,9 +30,6 @@
       "@outbound/*": [
         "src/features/outbound-campaign/*"
       ],
-      "@call-schedule/*": [
-        "src/features/call-schedule/*"
-      ],
       "@shared/*": [
         "src/shared/*"
       ]

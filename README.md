@@ -4,9 +4,10 @@
 
 一個整合 3CX 電話系統與 Bonsale CRM 的自動外撥活動管理平台。透過技術自動化地進行大規模電話外撥，並與 CRM 系統即時同步所有通話記錄。
 
+> 自動語音通知（Call Schedule）與 FIAS PMS 整合已拆分至獨立 repo：[bonvies/bonvies_call-schedule](https://github.com/bonvies/bonvies_call-schedule)
+
 ## ✨ 核心特色
 
-### 自動外播（Outbound Campaign）
 - ✅ 支援同時執行多個外撥活動
 - ✅ 3CX WebSocket 實時監聽電話狀態
 - ✅ 與 Bonsale CRM 雙向整合
@@ -15,21 +16,6 @@
 - ✅ 時間排程與限制支援
 - ✅ 撥打自動恢復機制
 - ✅ 實時儀表板監控
-
-### 自動語音通知（Call Schedule）
-- ✅ 排程自動撥打語音通知
-- ✅ 支援 NewRock / Yeastar 兩種電話設備（透過環境變數切換，無需改程式碼）
-- ✅ 未接聽自動重試（可設定次數與間隔）
-- ✅ Yeastar：REST API + WebSocket CDR 事件監聽 + 自動 Token 刷新
-- ✅ NewRock：HTTP 1.0 XML API + Push 事件接收
-- ✅ 通話結果回呼通知（callResultNotifier）
-
-### FIAS PMS 整合（飯店叫醒服務）
-- ✅ 支援 FIAS 協定與 PMS 系統雙向通訊
-- ✅ **Server 模式**：我方開 TCP Server，等待 PMS 連入（PMS Client 模式）
-- ✅ **Client 模式**：我方主動連至 PMS TCP Server（適用 FidServ Socket Server 等 PMS Server 模式）
-- ✅ 房間號碼自動轉換為分機號（可設定前綴）
-- ✅ Lakeshore Hotel 訂單流程：PMS 推送訂單 → 立即撥打 → 結果非同步回傳 PMS
 
 ## 🏗️ 專案架構
 
@@ -41,14 +27,7 @@ bonsale_3cx-outbound-campaign/
 │   ├── backend/                 # Node.js + TypeScript API 服務
 │   │   ├── src/
 │   │   │   ├── features/
-│   │   │   │   ├── outbound-campaign/   # 3CX 自動外播功能
-│   │   │   │   └── call-schedule/       # 自動語音通知 + FIAS PMS 整合
-│   │   │   │       ├── components/      # fiasHandler（FIAS 訊息處理）
-│   │   │   │       ├── services/
-│   │   │   │       │   ├── api/device/  # NewRock / Yeastar 實作
-│   │   │   │       │   └── monitor/     # 通話監控（NewRock / Yeastar）
-│   │   │   │       ├── util/            # fias.ts, fiasClient.ts, fiasConnectionStore.ts
-│   │   │   │       └── routes/          # callSchedule.ts, lakeshore.ts
+│   │   │   │   └── outbound-campaign/   # 3CX 自動外播功能
 │   │   ├── Dockerfile
 │   │   └── package.json
 │   └── frontend/                # React + Vite 前端應用
@@ -80,14 +59,10 @@ bonsale_3cx-outbound-campaign/
 
 ### 必需的環境變數
 
-在專案根目錄建立 `.env` 檔案（可參考 `apps/backend/.env.example`）。完整的必填／條件必填／選填與預設值分類請見該檔案，這裡只列出兩個功能開關本身，以及開啟 `ENABLE_OUTBOUND_CAMPAIGN` 時的重點必填變數：
+在專案根目錄建立 `.env` 檔案（可參考 `apps/backend/.env.example`）。完整的必填／選填與預設值分類請見該檔案，這裡只列出必填變數：
 
 ```bash
-# 功能開關（必填）
-ENABLE_OUTBOUND_CAMPAIGN=true   # 自動外播功能
-ENABLE_CALL_SCHEDULE=true       # 自動語音通知 (Call Schedule)
-
-# 以下於 ENABLE_OUTBOUND_CAMPAIGN=true 時必填
+CLIENT_ID=<客戶識別>
 BONSALE_HOST=<BONSALE_API_ENDPOINT>
 BONSALE_X_API_KEY=<YOUR_API_KEY>
 BONSALE_X_API_SECRET=<YOUR_API_SECRET>
@@ -97,47 +72,7 @@ HTTP_HOST_MESSAGE_FOR_AI=<MESSAGE_SERVICE_URL>
 POST_9000_BASIC_AUTH=<BASE64_ENCODED_CREDENTIALS>
 ```
 
-啟動時會依目前功能開關自動驗證上述變數，缺漏會在啟動當下列出並終止服務，不會等到執行期才出錯。
-
-### Call Schedule 專屬環境變數（`ENABLE_CALL_SCHEDULE=true` 時必填）
-
-```bash
-# 電話設備選擇（必填，無預設值）
-TELEPHONE_EQUIPMENT=NewRock     # 或 Yeastar、FreeSwitch
-
-# NewRock 設定（TELEPHONE_EQUIPMENT=NewRock 時必填）
-NEW_ROCK_API_HOST=<YOUR_NEW_ROCK_API_HOST>
-NEW_ROCK_API_PATH=/xml
-
-# Yeastar 設定（TELEPHONE_EQUIPMENT=Yeastar 時必填）
-YEASTAR_API_HOST=<YOUR_YEASTAR_API_HOST>
-YEASTAR_API_PATH=/openapi/v1.0
-YEASTAR_USERNAME=<YOUR_YEASTAR_USERNAME>
-YEASTAR_PASSWORD=<YOUR_YEASTAR_PASSWORD>
-
-# FreeSwitch 設定（TELEPHONE_EQUIPMENT=FreeSwitch 時必填）
-FREESWITCH_API_URL=<YOUR_FREESWITCH_API_URL>
-FREESWITCH_API_KEY=<YOUR_FREESWITCH_API_KEY>
-```
-
-其餘選填變數（`NEW_ROCK_API_MONITOR_PORT`、`OM_CALL_FROM_EXTENSION`、`LAKESHORE_IP_WHITELIST` 等）請見 `apps/backend/.env.example`。
-
-### FIAS PMS 整合環境變數
-
-```bash
-# FIAS 連線模式（選填，預設 server）：
-#   server：我方開 TCP Server，等 PMS 連入（PMS Client 模式）
-#   client：我方主動連至 PMS TCP Server（PMS Server 模式，例如 FidServ Socket Server）
-FIAS_MODE=server
-
-# FIAS_MODE=client 時必填：PMS TCP Server 的位址與 port
-# 範例：FidServ Device Settings → Device Type: Socket Server, Port: 5006
-# 注意：PMS 端需勾選「allow new connection」才能接受我方連線
-FIAS_PMS_HOST=<PMS_IP_OR_HOSTNAME>
-FIAS_PMS_PORT=<PMS_PORT>
-```
-
-其餘選填變數（`FIAS_PORT`、`FIAS_HEARTBEAT_INTERVAL_MS`、`FIAS_ENCODING`、`FIAS_EXTENSION_PREFIX` 等）請見 `apps/backend/.env.example`。
+啟動時會自動驗證上述變數，缺漏會在啟動當下列出並終止服務，不會等到執行期才出錯。
 
 ## 🚀 快速開始
 
@@ -288,12 +223,10 @@ docker-compose -f docker-compose.prod.yml up -d backend
 |------|------|
 | **前端** | React 19 + Vite + TypeScript + Material-UI 7 |
 | **後端** | Node.js + Express + TypeScript |
-| **資料庫** | Redis（外播狀態快取）+ SQLite / better-sqlite3（語音通知排程） |
+| **資料庫** | Redis（外播狀態快取） |
 | **容器化** | Docker + Docker Compose |
-| **通訊** | WebSocket（實時更新）+ REST API + TCP（FIAS PMS）|
+| **通訊** | WebSocket（實時更新）+ REST API |
 | **託管** | Google Cloud Platform (GCP) |
-| **電話設備** | NewRock OM API / Yeastar OpenAPI（可切換）|
-| **PMS 整合** | FIAS 協定（Server / Client 雙模式）|
 
 ## 🐛 故障排查
 
@@ -318,9 +251,3 @@ docker exec -it bonsale_3cx-outbound-campaign_redis redis-cli ping
 - 驗證前端容器是否正常運行：`docker-compose ps frontend`
 - 檢查埠口 4030 是否被佔用
 - 確認後端 API 地址是否正確配置
-
-### FIAS 連線問題
-
-- **Server 模式**：確認防火牆已開放 `FIAS_PORT`（預設 4021）供 PMS 連入
-- **Client 模式**：確認 PMS 端已勾選「allow new connection」，且 `FIAS_PMS_HOST` / `FIAS_PMS_PORT` 填寫正確
-- 查看後端日誌中 `[FIAS]` 前綴的訊息排查連線狀態

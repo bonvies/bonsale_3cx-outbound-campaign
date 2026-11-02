@@ -3,7 +3,6 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { Toaster } from 'react-hot-toast';
 import theme from './shared/theme/theme.ts';
 import custom from "./shared/theme/custom.ts";
-import { AuthProvider } from './shared/context/AuthContext';
 
 const muiTheme = createTheme(theme, custom);
 
@@ -20,10 +19,8 @@ console.log('VITE_ENV:', VITE_ENV);
 function App() {
   return (
     <ThemeProvider theme={muiTheme}>
-      <AuthProvider>
-        <Router />
-        <Toaster position="top-center" />
-      </AuthProvider>
+      <Router />
+      <Toaster position="top-center" />
     </ThemeProvider>
   )
 }
