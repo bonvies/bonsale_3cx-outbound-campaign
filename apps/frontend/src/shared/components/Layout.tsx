@@ -43,7 +43,7 @@ export default function Layout() {
           pointerEvents: 'none',
         }}
       >
-        v3.0.2
+        v{__APP_VERSION__}
       </Box>
     </Box>
   );

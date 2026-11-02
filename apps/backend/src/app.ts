@@ -12,6 +12,7 @@ import { createServer as createHttpServer } from 'http';
 import { WebSocketServer } from 'ws';
 
 import { validateEnv } from './shared/util/validateEnv';
+import { APP_VERSION } from './shared/util/appVersion';
 
 // 自動外播 (Outbound Campaign) 模組採 dynamic import：其中 callControl.ts 在模組載入時就會檢查
 // 3CX 環境變數並 throw，必須等 validateEnv() 先跑完、列出清楚的缺漏訊息後才載入。
@@ -363,7 +364,7 @@ httpServer.listen(PORT, async () => {
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔌 WebSocket server is running on port ${PORT}`);
     console.log(`🖥️ Bonsale WebHook WebSocket is available on port ${PORT}/api/bonsale/webhook-ws`);
-    console.log(`ℹ️ Version: v3.0.2`);
+    console.log(`ℹ️ Version: v${APP_VERSION}`);
 
   } catch (error) {
     console.error('啟動服務器失敗:', error);

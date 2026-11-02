@@ -1,6 +1,6 @@
 {
   "name": "bonsale_3cx-outbound-campaign",
-  "version": "1.0.0",
+  "version": "3.0.2",
   "private": true,
   "engines": {
     "node": ">=18.0.0",
@@ -21,7 +21,8 @@
     "deploy:backend": "docker build --platform linux/amd64 -f apps/backend/Dockerfile -t gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_backend:latest . && docker push gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_backend:latest",
     "deploy:frontend": "docker build --platform linux/amd64 -f apps/frontend/Dockerfile -t gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_frontend:latest . && docker push gcr.io/drvet-server-sysstore-bonvies/bonsale_3cx-outbound-campaign_frontend:latest",
     "deploy": "pnpm deploy:backend && pnpm deploy:frontend",
-    "prepare": "husky"
+    "prepare": "husky",
+    "bump": "sh scripts/version.sh"
   },
   "lint-staged": {
     "apps/backend/**/*.{js,ts}": [
