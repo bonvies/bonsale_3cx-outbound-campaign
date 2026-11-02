@@ -174,7 +174,7 @@ export async function listCallSchedules(params: ListCallSchedulesParams): Promis
     `SELECT * FROM call_schedules ${whereClause} ORDER BY ${sortField} ${sortOrder} LIMIT ? OFFSET ?`
   ).all(...paginatedParams) as DbRow[];
 
-  const timezone = await getSiteTimezone();
+  const timezone = getSiteTimezone();
   return { data: rows.map(row => rowToRecord(row, timezone)), total: countResult.count };
 }
 
@@ -183,7 +183,7 @@ export async function getCallScheduleById(id: string): Promise<CallScheduleRecor
   const db = getDatabase();
   const row = db.prepare('SELECT * FROM call_schedules WHERE id = ?').get(id) as DbRow | undefined;
   if (!row) return null;
-  const timezone = await getSiteTimezone();
+  const timezone = getSiteTimezone();
   return rowToRecord(row, timezone);
 }
 

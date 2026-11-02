@@ -1,20 +1,12 @@
 import express, { Router, Request, Response } from 'express';
+import { getSiteTimezone } from '@call-schedule/util/timezone';
+
 const router: Router = express.Router();
 
-// GET /api/config/auth
-router.get('/auth', (req: Request, res: Response) => {
-  try {
-    res.json({
-      success: true,
-      data: {
-        OutboundCampaign: process.env.ENABLE_OUTBOUND_CAMPAIGN === 'true',
-        CallSchedule: process.env.ENABLE_CALL_SCHEDULE === 'true'
-      }
-    });
-  } catch (error) {
-    console.error('[Auth] GET /auth error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
-  }
+// GET /api/config/timezone
+// 前端顯示排程時間時，以站點時區（SITE_TIMEZONE）換算
+router.get('/timezone', (_req: Request, res: Response) => {
+  res.json({ success: true, data: { timezoneIANA: getSiteTimezone() } });
 });
 
 export default router;
