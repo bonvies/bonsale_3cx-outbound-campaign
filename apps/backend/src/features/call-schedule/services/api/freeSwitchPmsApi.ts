@@ -69,6 +69,7 @@ export async function checkout(roomNumber: string): Promise<ApiResult<PmsExtensi
  * 直接指定欄位更新分機（不經過 checkin/checkout 的自動規則），見《整合說明書》5.3。
  * toll_allow、effectiveCallerIdName 主管建議必填，effectiveCallerIdNumber 依需要帶入。
  * doNotDisturb 為獨立欄位，可單獨更新（不影響 toll_allow 等其他欄位），見 DND 功能上線後的實測。
+ * guestLanguage 同 checkin()，對應 FIAS GL 欄位、原樣透傳為 guest_language，供 GC 資料異動同步語系。
  */
 export async function update(params: {
   extension: string;
@@ -76,8 +77,9 @@ export async function update(params: {
   effectiveCallerIdName?: string;
   effectiveCallerIdNumber?: string;
   doNotDisturb?: boolean;
+  guestLanguage?: string;
 }): Promise<ApiResult<PmsExtensionResponse>> {
-  const { extension, tollAllow, effectiveCallerIdName, effectiveCallerIdNumber, doNotDisturb } = params;
+  const { extension, tollAllow, effectiveCallerIdName, effectiveCallerIdNumber, doNotDisturb, guestLanguage } = params;
   try {
     const response = await axios.post<PmsExtensionResponse>(`${API_URL}/pms/extension/update`, {
       domain_name: DOMAIN_NAME,
@@ -86,6 +88,7 @@ export async function update(params: {
       effective_caller_id_name: effectiveCallerIdName,
       effective_caller_id_number: effectiveCallerIdNumber,
       do_not_disturb: doNotDisturb,
+      guest_language: guestLanguage,
       reloadxml: true,
     }, { headers: HEADERS });
     console.log(`[freeSwitchPmsApi] update(分機=${extension}) HTTP ${response.status}`, response.data);
