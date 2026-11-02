@@ -10,6 +10,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      '@outbound': resolve(__dirname, 'src/features/outbound-campaign'),
       '@call-schedule': resolve(__dirname, 'src/features/call-schedule'),
       '@shared': resolve(__dirname, 'src/shared'),
     }

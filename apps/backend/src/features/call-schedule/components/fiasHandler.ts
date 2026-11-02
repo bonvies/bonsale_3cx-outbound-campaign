@@ -17,7 +17,7 @@ import { pmsExtensionService } from '@call-schedule/services/api/pmsExtensionSer
  * 若 DT 未提供，預設使用當天；若時間已過則排明天
  */
 async function parseFiasDate(ti: string, dt?: string): Promise<Date> {
-  const timezone = getSiteTimezone();
+  const timezone = await getSiteTimezone();
   const hour = parseInt(ti.substring(0, 2), 10);
   const minute = parseInt(ti.substring(2, 4), 10);
 

@@ -12,11 +12,18 @@ COPY pnpm-workspace.yaml ./
 # Install pnpm
 RUN npm install -g pnpm
 
+# Copy shared packages
+COPY packages ./packages
+
 # Copy only frontend app
 COPY apps/frontend ./apps/frontend
 
 # Install all dependencies
 RUN pnpm install
+
+# Build shared types first
+WORKDIR /app/packages/shared-types
+RUN pnpm run build
 
 # Build frontend with only Vite (skip tsc -b)
 WORKDIR /app/apps/frontend

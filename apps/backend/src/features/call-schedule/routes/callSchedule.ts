@@ -12,7 +12,7 @@ import {
 const router: Router = express.Router();
 
 // date 欄位統一使用 UTC ISO 8601 格式（Z 結尾），由前端負責轉換當地時間為 UTC 後傳入。
-// 回傳時會依站點時區（SITE_TIMEZONE）轉回當地時間顯示。
+// 回傳時會依 Bonsale timezoneIANA 轉回當地時間顯示。
 const UTC_ISO_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
 function validateUtcDate(date: string): boolean {

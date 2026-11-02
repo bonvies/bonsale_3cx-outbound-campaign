@@ -9,10 +9,12 @@ const HTTP_HOST =
     ? `${api_protocol}://${hostname}:${port}`
     : `${api_protocol}://${domain}:${port}`
 
-/** 取得站點時區（後端 SITE_TIMEZONE，IANA 格式） */
-export async function fetchSiteTimezone(): Promise<string> {
-  const { data } = await axios.get<{ success: boolean; data: { timezoneIANA: string } }>(
-    `${HTTP_HOST}/api/config/timezone`
-  )
-  return data.data.timezoneIANA
+export type AuthConfig = {
+  OutboundCampaign: boolean
+  CallSchedule: boolean
+}
+
+export async function fetchAuthConfig(): Promise<AuthConfig> {
+  const { data } = await axios.get<{ success: boolean; data: AuthConfig }>(`${HTTP_HOST}/api/config/auth`)
+  return data.data
 }
